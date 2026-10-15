@@ -14,7 +14,7 @@ Android app (WebView + Kotlin) with LAN multiplayer and in-app updates from GitH
 GitHub Actions builds the APK and attaches `StreetDominoes-v1.0.0.apk` to the release. The repo must be public (the app reads the releases API).
 
 ## Update later
-Edit `app/src/main/assets/www/index.html`, commit, then `git tag v1.0.1 && git push origin v1.0.1`.
+Edit `app/src/main/assets/www/index.html`, commit, then tag the next version (for example `git tag v1.1.0 && git push origin v1.1.0`).
 Installed apps check at launch (and in Settings) and offer "Update now".
 
 ## LAN play
