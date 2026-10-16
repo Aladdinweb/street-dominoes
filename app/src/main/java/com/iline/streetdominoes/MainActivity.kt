@@ -43,6 +43,13 @@ class MainActivity : Activity() {
         web.loadUrl("file:///android_asset/www/index.html")
     }
 
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        web.evaluateJavascript("(window.onBackPress?window.onBackPress():false)") { r ->
+            if (r != "true") finish()
+        }
+    }
+
     override fun onDestroy() {
         try { server?.stop(100) } catch (_: Exception) {}
         try { client?.close() } catch (_: Exception) {}
