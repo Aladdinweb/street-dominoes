@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.2
+- Drag & drop: drag a stone from your hand onto the open end you want (green outlines show the legal ends); tapping still works.
+- Smart board layout: turns and doubles no longer overlap or clip at the table edge, doubles stay perpendicular to the chain,
+  and every turn is checked against stones already on the table. If a turn would collide, the chain turns the other way /
+  toward open space.
+- Dynamic zoom-out as the chain grows (1.0 down to 0.65-0.70; 0.60/0.55 only in rare near-full one-sided chains).
+- Online Multiplayer (Cloudflare Workers + WebSockets): Quick Match, private rooms with a code, server-side rules and
+  anti-cheat, 30 s reconnect grace period, bots fill empty seats. Server code in `server/`.
+- Player stats (matches, wins, rounds), coins and settings stay on the device; no account needed.
+- Fixed: coins payout for LAN friends (the winner side was computed wrongly on a client phone).
+
 ## 1.1.1
 - LAN multiplayer split into Casual Play and Coins Match. Coins Match: host picks a stake (500 / 1,000 / 5,000),
   every seat adds the stake to the pot and the winning player/team takes the full pot. Coins are virtual

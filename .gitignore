@@ -3,3 +3,5 @@ build/
 *.jks
 *.b64
 local.properties
+node_modules/
+.wrangler/
