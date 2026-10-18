@@ -1,4 +1,4 @@
-# Street Dominoes online server (Cloudflare Workers + Durable Objects)
+# Street Dominoes online server (Cloudflare Workers + Durable Objects + KV)
 
 Endpoint used by the app: `wss://street-dominoes-server.alaacasanova31.workers.dev/ws`
 
@@ -25,3 +25,10 @@ The server owns the game state (deal, chain, turns, boneyard, scoring). It valid
 legality, draw/pass legality, rate-limits messages and only sends each player their own hand.
 A player who drops has 30 s to reconnect with the same `pid`; after that a 1v1 is forfeited, and in 2v2 a bot takes the seat.
 An idle player is auto-played after 45 s so the table never stalls.
+
+## Player profiles (v1.2.0)
+KV binding `PLAYER_STATS` (namespace id in `wrangler.toml`).
+- `GET  /api/profile?playerId=usr_xxxxxx` -> `{exists, profile}` (a blank default profile when unknown, nothing is written)
+- `POST /api/match-result` `{playerId,name,avatar,result:'win'|'loss',blockedWins,mode}` -> updated profile (the ONLY KV write, once per match)
+Validation: id format, result/blockedWins ranges, 2 KB body limit, 3 s gap per player, 150 matches/day, sanitised name, avatar whitelist, CORS enabled.
+Note: there is no login yet, so results are reported by the app; the 1.3.0 leaderboards should use results the server itself saw in online rooms.

@@ -1,6 +1,7 @@
-// Street Dominoes - online server (Cloudflare Workers + Durable Objects) - v1.1.2
+// Street Dominoes - online server (Cloudflare Workers + Durable Objects + KV) - v1.2.0
 // WebSocket endpoint:  /ws?room=CODE | /ws?create=1&gm=1v1|2v2&target=100|200|300 | /ws?quick=1&gm=1v1|2v2
 // Common params: pid (stable random player id, used for reconnects), name, av
+// Profile API (KV binding PLAYER_STATS): GET /api/profile?playerId=usr_xxxxxx | POST /api/match-result (one write per finished match)
 // The server owns the canonical game state: it deals, validates every move and only sends each player their own hand.
 
 export const CFG = { GRACE: 30000, TURN: 45000, DEAL: 4300, NEXT: 9000, FILL: 3000, QFILL: 12000, BOT: [800, 500], DRAW: 500, RATE: 30 };
@@ -15,11 +16,60 @@ const clean = (s, n) => String(s || '').replace(/[^\w\u0600-\u06FF \-.]/g, '').t
 const send = (ws, o) => { try { ws.send(JSON.stringify(o)); } catch (e) {} };
 function code() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let c = ''; for (let i = 0; i < 5; i++) c += A[rnd(A.length)]; return c; }
 
+
+// ---------- Player profiles (Cloudflare KV: PLAYER_STATS) ----------
+export const API = { GAP: 3000, DAY_MAX: 150 };
+const AVATARS = ['😎', '🦁', '🐯', '🦊', '🐼', '🦅', '🐉', '👑', '🎩', '🤠', '🧔', '🥷'];
+const TITLES = [[5, 'Street Rookie'], [20, 'Café Player'], [50, 'Table Master'], [100, 'Domino General'], [Infinity, 'Street Legend']];
+export const titleOf = w => TITLES.find(t => w <= t[0])[1];
+const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'content-type', 'access-control-max-age': '86400' };
+const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json', ...CORS } });
+const validId = id => /^usr_[a-z0-9]{4,20}$/.test(id || '');
+const blank = id => ({ playerId: id, name: 'Player', avatar: AVATARS[0], title: titleOf(0), rankPoints: 1000, totalWins: 0, winRate: '0.0%', blockedWins: 0, winStreak: 0, totalMatches: 0 });
+const pub = p => { const { lastAt, day, dc, ...rest } = p; return rest; };
+
+async function api(req, env, url) {
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+  if (!env.PLAYER_STATS) return json({ error: 'kv_not_configured' }, 503);
+  if (url.pathname === '/api/profile' && req.method === 'GET') {
+    const id = url.searchParams.get('playerId');
+    if (!validId(id)) return json({ error: 'bad_id' }, 400);
+    const p = await env.PLAYER_STATS.get('profile:' + id, 'json');
+    return json({ exists: !!p, profile: pub(p || blank(id)) });
+  }
+  if (url.pathname === '/api/match-result' && req.method === 'POST') {
+    const raw = await req.text();
+    if (raw.length > 2048) return json({ error: 'too_large' }, 413);
+    let b; try { b = JSON.parse(raw); } catch (e) { return json({ error: 'bad_json' }, 400); }
+    if (!b || !validId(b.playerId) || (b.result !== 'win' && b.result !== 'loss')) return json({ error: 'bad_request' }, 400);
+    const bw = b.blockedWins === undefined ? 0 : b.blockedWins;
+    if (!Number.isInteger(bw) || bw < 0 || bw > 14) return json({ error: 'bad_request' }, 400);
+    const key = 'profile:' + b.playerId, now = Date.now();
+    const p = (await env.PLAYER_STATS.get(key, 'json')) || blank(b.playerId);
+    if (p.lastAt && now - p.lastAt < API.GAP) return json({ error: 'rate_limited' }, 429);
+    const day = new Date(now).toISOString().slice(0, 10);
+    if (p.day !== day) { p.day = day; p.dc = 0; }
+    if ((p.dc || 0) >= API.DAY_MAX) return json({ error: 'daily_limit' }, 429);
+    p.dc = (p.dc || 0) + 1; p.lastAt = now;
+    p.name = clean(b.name, 12) || p.name;
+    p.avatar = AVATARS.includes(b.avatar) ? b.avatar : p.avatar;
+    p.totalMatches++;
+    if (b.result === 'win') { p.totalWins++; p.winStreak++; } else p.winStreak = 0;
+    p.blockedWins += bw;
+    p.winRate = (100 * p.totalWins / p.totalMatches).toFixed(1) + '%';
+    p.title = titleOf(p.totalWins);
+    await env.PLAYER_STATS.put(key, JSON.stringify(p));     // the only KV write: once per finished match
+    return json({ ok: true, profile: pub(p) });
+  }
+  return json({ error: 'not_found' }, 404);
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
+    if (url.pathname.startsWith('/api/')) return api(req, env, url);
     if (url.pathname === '/' || url.pathname === '/health')
-      return new Response('Street Dominoes server OK', { headers: { 'content-type': 'text/plain' } });
+      return new Response('Street Dominoes server OK', { headers: { 'content-type': 'text/plain', ...CORS } });
     if (url.pathname !== '/ws') return new Response('Not found', { status: 404 });
     if (req.headers.get('Upgrade') !== 'websocket') return new Response('Expected WebSocket', { status: 426 });
     if (url.searchParams.get('quick')) return env.MATCH.get(env.MATCH.idFromName('mm')).fetch(req);
@@ -42,7 +92,7 @@ export class GameRoom {
     this.score = [0, 0]; this.mid = 0; this.rid = 0; this.fxn = 0; this.nextStart = null;
     this.hands = [[], [], [], []]; this.yard = []; this.chain = []; this.ci = 0; this.cur = 0; this.over = -1;
     this.wt = -1; this.blocked = false; this.gain = 0; this.passes = 0; this.dealing = false; this.fx = null;
-    this.final = false; this.fo = -1;
+    this.final = false; this.fo = -1; this.ps = null; this.psn = 0;
   }
   get act() { return ORDER[this.cfg.gm]; }
   clear(k) { clearTimeout(this.timers[k]); delete this.timers[k]; }
@@ -258,6 +308,7 @@ export class GameRoom {
     this.doPass();
   }
   doPass() {
+    this.ps = { p: this.cur, id: ++this.psn };
     this.passes++;
     if (this.passes >= this.act.length) return this.endRound(null, true);
     this.next();
@@ -309,7 +360,7 @@ export class GameRoom {
       avs: [0, 1, 2, 3].map(i => (this.seats[i] ? this.seats[i].av : i)),
       wt: this.wt, gm: this.cfg.gm, stake: 0, mid: this.mid, yd: this.yard.map(y => (y ? 1 : 0)), dealing: this.dealing, fx: this.fx,
       hands: this.hands.map((h, i) => (this.over >= 0 || i === p ? h : h.map(() => 0))),
-      chain: this.chain, ci: this.ci, cur: this.cur, over: this.over, score: this.score, blocked: this.blocked, gain: this.gain,
+      chain: this.chain, ci: this.ci, cur: this.cur, ps: this.ps, over: this.over, score: this.score, blocked: this.blocked, gain: this.gain,
       target: this.cfg.target, rid: this.rid, fo: this.fo,
       off: this.seats.map((s, i) => (s && !s.bot && s.off ? { p: i, s: Math.max(0, Math.ceil((s.off - now) / 1000)) } : null)).filter(Boolean),
     };

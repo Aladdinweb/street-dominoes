@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.0
+- Player identity & stats (hybrid persistence): playerId, name, avatar, title and preferences cached on the device; stats sync with
+  Cloudflare KV only once per finished match (POST /api/match-result) plus a single GET /api/profile at startup. Results are queued
+  offline and sent later. Titles by lifetime wins: Street Rookie (0-5), Café Player (6-20), Table Master (21-50),
+  Domino General (51-100), Street Legend (101+).
+- ProfileModal (tap your card in the menu): avatar, name, title progress, rank points, wins, win rate, blocked wins, win streak, sync status.
+- Cinematic overlays: "TABLE BLOCKED!" (pulsing golden glow, remaining pips and stones per player) and the victory splash
+  (pop & scale-up, sparks, count-up points, Rematch).
+- Skins engine: registry + CSS variables for table themes, tile skins and audio FX (ready for the 1.4.0 themes hub).
+- Board: a double near ANY frame side makes the next stone pivot 90 degrees beside it; bounding-box centring and smooth CSS-transition zoom
+  (turn-budget: 1.0 -> 0.9 -> 0.85 -> 0.8 -> 0.75, down to 0.65 for collisions) with safe padding so tiles never touch the frame.
+- Pass: heavy double-knock on the table + soft "pass" cue, and an animated PASSED badge beside the player's name tag for 1.5 s
+  (also shown to LAN and online players).
+- Server: moved to `server/src/worker.js`, new KV binding PLAYER_STATS, profile API with validation, rate limits and CORS.
+
 ## 1.1.2
 - Drag & drop: drag a stone from your hand onto the open end you want (green outlines show the legal ends); tapping still works.
 - Smart board layout: turns and doubles no longer overlap or clip at the table edge, doubles stay perpendicular to the chain,

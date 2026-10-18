@@ -21,6 +21,6 @@ Installed apps check at launch (and in Settings) and offer "Update now".
 Same Wi-Fi (or one phone's hotspot). Host: Host LAN tab, set seats to 📡, share the shown address. Friends: Join LAN, type the address.
 
 ## Online server (v1.1.2)
-The Cloudflare Worker lives in `server/` (see `server/README.md`). Deploy it once with `npx wrangler deploy` in that folder,
+The Cloudflare Worker lives in `server/src/worker.js` (see `server/README.md`; KV binding PLAYER_STATS for profiles). Deploy it once with `npx wrangler deploy` in that folder,
 or let the "Deploy online server" workflow do it (needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets).
 The app connects to `wss://street-dominoes-server.alaacasanova31.workers.dev/ws`.

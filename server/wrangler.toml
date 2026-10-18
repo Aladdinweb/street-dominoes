@@ -1,7 +1,13 @@
 name = "street-dominoes-server"
-main = "worker.js"
-compatibility_date = "2024-11-01"
+main = "src/worker.js"
+compatibility_date = "2026-03-01"
 
+# Player profiles / stats (one write per finished match)
+[[kv_namespaces]]
+binding = "PLAYER_STATS"
+id = "3192fd55450a41258c4d59964fc762a5"
+
+# Online rooms + matchmaking
 [[durable_objects.bindings]]
 name = "ROOMS"
 class_name = "GameRoom"
