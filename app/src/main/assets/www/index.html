@@ -153,8 +153,9 @@ body{background:radial-gradient(circle at 50% -10%,#24344d,#0a0d13 70%) fixed;co
 @keyframes spk{from{transform:rotate(var(--a)) translateX(0);opacity:1}to{transform:rotate(var(--a)) translateX(var(--d));opacity:0}}
 .ttl2{font-style:normal;color:var(--ac);font-size:12px}
 
-#cin{position:absolute;left:0;top:0;transform-origin:0 0;transition:transform .3s ease}
-#cin .cw{position:absolute;transition:left .3s,top .3s,width .3s,height .3s}
+#cin{position:absolute;left:0;top:0;transform-origin:0 0;transition:transform .3s ease;will-change:transform;backface-visibility:hidden}
+#cin .cw{position:absolute;left:0;top:0;transition:transform .3s ease;will-change:transform;backface-visibility:hidden;transform:translate3d(0,0,0)}
+#cin .cw .t{transform:translateZ(0)}
 #cin .cw .t{position:static;width:100%;height:100%}
 .pas{position:fixed;transform:translateY(-50%);background:#f2c14e;color:#1a1205;font-weight:900;font-size:12px;letter-spacing:1px;padding:4px 10px;border-radius:10px;box-shadow:0 3px 10px #0009;animation:pasa 1.5s ease both;pointer-events:none;white-space:nowrap}
 @keyframes pasa{0%{opacity:0;transform:translateY(-50%) scale(.6)}12%{opacity:1;transform:translateY(-50%) scale(1.12)}22%{transform:translateY(-50%) scale(1)}82%{opacity:1}100%{opacity:0}}
@@ -364,7 +365,7 @@ const f=mkEl('fly'),c=tg.cloneNode(true);c.style.cssText='position:static;visibi
 f.style.width=tr.width+'px';f.style.height=tr.height+'px';f.appendChild(c);f.appendChild(mkEl('hand',HAND));$('fx').appendChild(f);
 const sx=sr.left+sr.width/2-tr.width/2,sy=sr.top+sr.height/2-tr.height/2;
 const a=f.animate([{transform:`translate(${sx}px,${sy}px) scale(1.3) rotate(${sx<tr.left?-14:14}deg)`},{transform:`translate(${tr.left}px,${tr.top}px) scale(1) rotate(0deg)`}],{duration:360,easing:'cubic-bezier(.3,.7,.4,1)',fill:'forwards'});
-const done=()=>{f.remove();tg.style.visibility='visible';tg.classList.add('thud');if(fo.dbl){snd.slam();const w=$('tw');w.classList.add('shk');setTimeout(()=>w.classList.remove('shk'),320)}else snd.drop()};
+const done=()=>{f.remove();tg.style.visibility='visible';const inn=(tg.querySelector&&tg.querySelector('.t'))||tg;inn.classList.add('thud');if(fo.dbl){snd.slam();const w=$('tw');w.classList.add('shk');setTimeout(()=>w.classList.remove('shk'),320)}else snd.drop()};
 a.finished.then(done,done)}
 function flyFd(r,p){const q=seatRect(p);if(!r||!q)return;const el=mkEl('fd fly');$('fx').appendChild(el);
 const a=el.animate([{transform:`translate(${r.left}px,${r.top}px)`},{transform:`translate(${q.left+q.width/2-12}px,${q.top+q.height/2-22}px)`}],{duration:300,easing:'ease-out',fill:'forwards'});a.finished.then(()=>el.remove(),()=>el.remove())}
@@ -391,7 +392,7 @@ function coinsRules(){if(stake){seat[0]=1;for(const i of [1,2,3])if(seat[i]===1)
 function newMatch(){if(stake&&coins<stake){upShow(`<h3>🪙 ${t().nc}</h3><button class="big" id="upx">${t().upOk}</button>`);return false}score=[0,0];nextStart=null;mid++;settled=false;if(stake){coins-=stake;saveSet()}return true}
 const ZL=[1,.9,.85,.8,.75,.7,.65,.6,.55],MT=[0,1,2,3,99,99,99,99,99],esc=s=>String(s).replace(/[<>&"']/g,'');
 let cinEl=null,lastTf={s:1,dx:0,dy:0},lastLay=[],zoomS=1,drag=null,dragSup=false,dropFrom=null,dragFx=[];
-function layoutTry(W,H){const S=24,L=48,o=2,m=16,out=[],cx=W/2,cy=H/2,c=chain[ci],dc=c.a===c.b,cw=dc?S:L,chh=dc?L:S;let ok=true,turns=0,forced=0;const fdirs=[];
+function layoutTry(W,H){const S=24,L=48,o=2,m=16,out=[],cx=W/2,cy=H/2,c=chain[ci],dc=c.a===c.b,cw=dc?S:L,chh=dc?L:S;let ok=true,turns=0;
 out.push({l:c.a,r:c.b,x:cx-cw/2,y:cy-chh/2,w:cw,h:chh,v:dc,i:ci,dbl:dc});let last=out[0];
 const ov=(r,q,g)=>r.x<q.x+q.w+g&&q.x<r.x+r.w+g&&r.y<q.y+q.h+g&&q.y<r.y+r.h+g,
 hit=r=>out.some(q=>ov(r,q,q===last?-4:2)),
@@ -403,18 +404,17 @@ const room=(nd,f,lc)=>{let n=0;const pos=nd<2,hz=nd%2===0,lim=hz?W:H;for(let k=0
 const walk=(seq,f,lc,d)=>{last=out[0];for(const q of seq){
 const hz=d%2===0,pos=d<2,len=q.d?S:L,th=q.d?L:S,a0=pos?f-o:f+o-len,e=pos?a0+len:a0;
 const r=hz?{x:a0,y:lc-th/2,w:len,h:th}:{x:lc-th/2,y:a0,w:th,h:len},lim=hz?W:H,fits=pos?e<=lim-m-(S-o):e>=m+(S-o),
-straight=fits&&inside(r)&&!hit(r),rem=pos?lim-m-e:e-m;
-/* a double close to ANY frame side makes the next stone pivot 90 degrees right next to it */
-if(straight&&!(last.dbl&&rem<L+S)){put(q,r,d,hz===!!q.d);f=e;continue}
+straight=fits&&inside(r)&&!hit(r);
+/* straight extension first: the stone on a double keeps the line; a turn only happens when the stone really reaches the frame padding or a collision */
+if(straight){put(q,r,d,hz===!!q.d);f=e;continue}
 let best=null;
 for(const nd of [(d+1)%4,(d+3)%4]){const c2=corner(d,nd,f,lc),v=bnd(c2.r)&&!hit(c2.r),rm=v?room(nd,c2.f,c2.lc):-1;if(!best||rm>best.rm)best={nd,c2,rm}}
-if(best.rm<0&&straight){put(q,r,d,hz===!!q.d);f=e;continue}
 if(best.rm<0)ok=false;
-turns++;if(straight&&last.dbl){forced++;fdirs.push(d)}
+turns++;
 put(q,best.c2.r,best.nd,best.nd%2===1);lc=best.c2.lc;f=best.c2.f;d=best.nd}};
 walk(chain.slice(ci+1).map((q,k)=>({p:q.a,q:q.b,d:q.a===q.b,idx:ci+1+k})),cx+cw/2,cy,0);
 walk(chain.slice(0,ci).reverse().map((q,k)=>({p:q.b,q:q.a,d:q.a===q.b,idx:ci-1-k})),cx-cw/2,cy,2);
-return{out,ok,turns,forced,fdirs}}
+return{out,ok,turns}}
 const layout=(W,H)=>layoutTry(W,H).out;
 function layoutFit(CW,CH,start){let k=Math.max(0,ZL.indexOf(start||1)),r=null,fo=null;
 for(;k<ZL.length;k++){r=layoutTry(CW/ZL[k],CH/ZL[k]);const it={out:r.out,s:ZL[k],ok:r.ok,turns:r.turns};if(r.ok&&!fo)fo=it;if(r.ok&&r.turns<=MT[k])return it}
@@ -539,11 +539,11 @@ const ft=layoutFit(CW,CH,zoomS);zoomS=ft.s;lastLay=ft.out;
 let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const q of lastLay){x0=Math.min(x0,q.x);y0=Math.min(y0,q.y);x1=Math.max(x1,q.x+q.w);y1=Math.max(y1,q.y+q.h)}
 const Wv=CW/ft.s,Hv=CH/ft.s,dx=Wv/2-(x0+x1)/2,dy=Hv/2-(y0+y1)/2;lastTf={s:ft.s,dx,dy};
 if(!cinEl){cinEl=mkEl('');cinEl.id='cin';ch.innerHTML='';ch.appendChild(cinEl);cinMap.clear()}
-cinEl.style.width=Wv+'px';cinEl.style.height=Hv+'px';cinEl.style.transform='scale('+ft.s+') translate('+dx+'px,'+dy+'px)';
+cinEl.style.width=Wv+'px';cinEl.style.height=Hv+'px';cinEl.style.transform='scale('+ft.s+') translate3d('+dx+'px,'+dy+'px,0)';
 const live=new Set();
 for(const q of lastLay){live.add(q.i);let w=cinMap.get(q.i);if(!w){w=mkEl('cw');w.dataset.ci=q.i;cinEl.appendChild(w);cinMap.set(q.i,w)}
 const sg=q.l+'|'+q.r+'|'+q.v;if(w._sg!==sg){w.innerHTML=tile(q.l,q.r,q.v?'v':'h');w._sg=sg}
-w.style.left=q.x+'px';w.style.top=q.y+'px';w.style.width=q.w+'px';w.style.height=q.h+'px'}
+w.style.width=q.w+'px';w.style.height=q.h+'px';w.style.transform='translate3d('+q.x+'px,'+q.y+'px,0)'}
 for(const [i,w] of cinMap)if(!live.has(i)){w.remove();cinMap.delete(i)}}
 let ctl='',hv=-1;
 if(humans()===1)hv=seat.indexOf(1);else if(hum&&shown)hv=cur;
