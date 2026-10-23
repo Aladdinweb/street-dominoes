@@ -1,0 +1,32 @@
+name: Deploy frontend to Cloudflare Pages
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/src/main/assets/www/**'
+      - 'pages/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage static site
+        run: |
+          mkdir -p dist
+          cp -r app/src/main/assets/www/. dist/
+          cp -r pages/. dist/          # _headers, manifest.webmanifest, icons
+          test -f dist/index.html
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=street-dominoes --branch=${{ github.ref_name }}
