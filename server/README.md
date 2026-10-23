@@ -32,3 +32,11 @@ KV binding `PLAYER_STATS` (namespace id in `wrangler.toml`).
 - `POST /api/match-result` `{playerId,name,avatar,result:'win'|'loss',blockedWins,mode}` -> updated profile (the ONLY KV write, once per match)
 Validation: id format, result/blockedWins ranges, 2 KB body limit, 3 s gap per player, 150 matches/day, sanitised name, avatar whitelist, CORS enabled.
 Note: there is no login yet, so results are reported by the app; the 1.3.0 leaderboards should use results the server itself saw in online rooms.
+
+## Voice chat signalling (v1.2.2)
+Audio is peer-to-peer (WebRTC); the room only forwards small signalling messages between players who joined voice.
+- client -> server `{t:'vc',on:0|1,m:0|1}` join/leave voice and mute flag; server -> all `{t:'vcs',v:[{p,m}]}` (also sent to every player who (re)connects)
+- client -> server `{t:'rtc',to:seat,k:'offer'|'answer'|'ice',d:{...}}`; server -> target `{t:'rtc',from:seat,k,d}`
+  Both players must be in voice; `d` is validated (type matches `k`, SDP <= 9 KB, ICE <= 1.2 KB); `from` is always the real seat.
+- Rate limits: normal messages 30/s, `rtc` messages 240/s (`CFG.RATE`, `CFG.RTCRATE`).
+- The lower seat always sends the offer (no glare). STUN only (Cloudflare + Google); phones behind carrier NAT may need a TURN server later.

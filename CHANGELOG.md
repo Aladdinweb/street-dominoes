@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.2
+- Rule: a double is always perpendicular to the line and the stone attached to it always continues crosswise (straight), also at the
+  table edge, in all four directions. The board first zooms/pads gently (down to 0.70, then 0.65 with a look-ahead turn of the stone
+  BEFORE the double) before any pivot. If that cannot be kept without tiny stones, the board falls back to allowing a turn.
+- Rule: real players now choose and place their own opening stone (the previous round's winner opens; the very first round is opened by the
+  holder of the highest double). Bots still open automatically. Works for local, LAN and online play (server validates the opening too).
+- Voice chat (online rooms): WebRTC peer-to-peer audio, signalled through the Durable Object room (offers / answers / ICE only, no audio
+  on the server). Mic button next to every human player's profile card: yours = mute/unmute, others = local mute. Android: microphone permission.
+- Server: voice signalling relay with strict validation, separate rate bucket for ICE bursts, voice list sent on (re)join.
+- Added STATE.md (project state, architecture, protocols, tests, limits).
+
 ## 1.2.1
 - Fixed: the stone after a double no longer turns 90 degrees when there is room. It always continues straight along the line of play,
   and a turn happens only when a stone really reaches the table padding/frame (or would collide with a stone already placed).

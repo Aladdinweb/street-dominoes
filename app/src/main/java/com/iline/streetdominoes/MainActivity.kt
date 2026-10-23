@@ -1,13 +1,17 @@
 package com.iline.streetdominoes
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
+import android.webkit.PermissionRequest
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.content.FileProvider
@@ -29,6 +33,7 @@ class MainActivity : Activity() {
     private val ids = ConcurrentHashMap<WebSocket, Int>()
     private val socks = ConcurrentHashMap<Int, WebSocket>()
     private val counter = AtomicInteger(0)
+    private var pendingMic: PermissionRequest? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(b: Bundle?) {
@@ -38,6 +43,20 @@ class MainActivity : Activity() {
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
         web.webViewClient = WebViewClient()
+        web.settings.mediaPlaybackRequiresUserGesture = false   // remote voice must play without a tap
+        web.webChromeClient = object : WebChromeClient() {
+            override fun onPermissionRequest(req: PermissionRequest) {
+                runOnUiThread {
+                    if (!req.resources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)) { req.deny(); return@runOnUiThread }
+                    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        req.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+                    } else {
+                        pendingMic = req
+                        requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 77)
+                    }
+                }
+            }
+        }
         web.addJavascriptInterface(Bridge(), "Native")
         setContentView(web)
         web.loadUrl("file:///android_asset/www/index.html")
@@ -47,6 +66,16 @@ class MainActivity : Activity() {
     override fun onBackPressed() {
         web.evaluateJavascript("(window.onBackPress?window.onBackPress():false)") { r ->
             if (r != "true") finish()
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 77) {
+            val r = pendingMic; pendingMic = null
+            if (r != null) {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) r.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE)) else r.deny()
+            }
         }
     }
 

@@ -4,7 +4,7 @@
 // Profile API (KV binding PLAYER_STATS): GET /api/profile?playerId=usr_xxxxxx | POST /api/match-result (one write per finished match)
 // The server owns the canonical game state: it deals, validates every move and only sends each player their own hand.
 
-export const CFG = { GRACE: 30000, TURN: 45000, DEAL: 4300, NEXT: 9000, FILL: 3000, QFILL: 12000, BOT: [800, 500], DRAW: 500, RATE: 30 };
+export const CFG = { GRACE: 30000, TURN: 45000, DEAL: 4300, NEXT: 9000, FILL: 3000, QFILL: 12000, BOT: [800, 500], DRAW: 500, RATE: 30, RTCRATE: 240 };
 const EMO = ['🤣', '😱', '😎', '👏', '😡', '🔥', '😭', '🤝'];
 const PHR = ['خفلة!', 'العب بسرعة!', 'ضربة معلّم!', 'برافو!', 'يا سلام!', 'استنى شوية!'];
 const ORDER = { '2v2': [0, 1, 2, 3], '1v1': [0, 2] };
@@ -139,6 +139,7 @@ export class GameRoom {
     ws.addEventListener('close', () => this.onClose(p, ws));
     ws.addEventListener('error', () => this.onClose(p, ws));
     if (this.phase === 'lobby') this.lobby(); else this.broadcast();
+    send(ws, { t: 'vcs', v: this.voiceNow() });
   }
 
   lobby() {
@@ -154,9 +155,10 @@ export class GameRoom {
   onMsg(p, ws, raw) {
     const s = this.seats[p];
     if (!s || s.ws !== ws) return;
-    const now = Date.now();
-    if (!s.w || now - s.w > 1000) { s.w = now; s.c = 0; }
-    if (++s.c > CFG.RATE) { try { ws.close(1008, 'rate'); } catch (e) {} return; }
+    const now = Date.now(), rtc = typeof raw === 'string' && raw.startsWith('{"t":"rtc"');   // ICE bursts get their own, larger bucket
+    const kw = rtc ? 'rw' : 'w', kc = rtc ? 'rc' : 'c';
+    if (!s[kw] || now - s[kw] > 1000) { s[kw] = now; s[kc] = 0; }
+    if (++s[kc] > (rtc ? CFG.RTCRATE : CFG.RATE)) { try { ws.close(1008, 'rate'); } catch (e) {} return; }
     let m; try { m = JSON.parse(raw); } catch (e) { return; }
     if (!m || typeof m.t !== 'string') return;
     switch (m.t) {
@@ -174,6 +176,8 @@ export class GameRoom {
           if (this.act.every(i => this.seats[i] && (this.seats[i].rm || this.seats[i].bot))) this.newMatch();
         }
         break;
+      case 'vc': s.vc = !!m.on; s.vm = !!m.m && s.vc; this.voiceList(); break;
+      case 'rtc': this.relay(p, m); break;
       case 'leave': this.leave(p); break;
     }
   }
@@ -182,6 +186,7 @@ export class GameRoom {
     const s = this.seats[p];
     if (!s || s.ws !== ws) return;
     s.ws = null;
+    if (s.vc) { s.vc = false; s.vm = false; this.voiceList(); }
     if (this.phase === 'lobby') {
       this.seats[p] = null;
       if (!this.humans()) { this.dispose(); return; }
@@ -210,7 +215,7 @@ export class GameRoom {
     const s = this.seats[p];
     if (!s || s.bot) return;
     const gm = this.cfg.gm;
-    s.bot = true; s.fn = true; s.off = 0; this.clear('off' + p);
+    s.bot = true; s.fn = true; s.off = 0; s.vc = false; s.vm = false; this.clear('off' + p);
     const w = s.ws; s.ws = null; try { w && w.close(1000, 'left'); } catch (e) {}
     if (gm === '1v1' && !(this.phase === 'over' && this.final)) {
       const o = this.act.find(i => i !== p), wt = tm(gm, o);
@@ -252,14 +257,15 @@ export class GameRoom {
       bp = this.nextStart; bi = 0; bs = -1;
       this.hands[bp].forEach((t, i) => { if (score(t) > bs) { bs = score(t); bi = i; } });
     }
-    const f = this.hands[bp].splice(bi, 1)[0];
-    this.chain = [{ a: f[0], b: f[1] }]; this.ci = 0; this.cur = bp; this.over = -1; this.passes = 0; this.blocked = false;
+    const auto = !!(this.seats[bp] && this.seats[bp].bot);          // bots open automatically, humans choose their own opening stone
+    const f = auto ? this.hands[bp].splice(bi, 1)[0] : null;
+    this.chain = auto ? [{ a: f[0], b: f[1] }] : []; this.ci = 0; this.cur = bp; this.over = -1; this.passes = 0; this.blocked = false;
     this.wt = -1; this.gain = 0; this.rid++; this.dealing = true; this.phase = 'dealing'; this.fx = null;
     this.broadcast();
     this.after('deal', CFG.DEAL, () => {
       this.dealing = false; this.phase = 'play';
-      this.fx = { p: bp, idx: 0, id: ++this.fxn, dbl: f[0] === f[1] };
-      this.next();
+      if (auto) { this.fx = { p: bp, idx: 0, id: ++this.fxn, dbl: f[0] === f[1] }; this.next(); }
+      else { this.fx = null; this.broadcast(); this.schedule(); }
     });
   }
   next() {
@@ -275,9 +281,9 @@ export class GameRoom {
     else this.after('turn', CFG.TURN, () => this.botStep());       // AFK human: auto-play so the table never stalls
   }
 
-  ends() { return [this.chain[0].a, this.chain[this.chain.length - 1].b]; }
-  canL(t) { const e = this.ends()[0]; return t[0] === e || t[1] === e; }
-  canR(t) { const e = this.ends()[1]; return t[0] === e || t[1] === e; }
+  ends() { return this.chain.length ? [this.chain[0].a, this.chain[this.chain.length - 1].b] : [-1, -1]; }
+  canL(t) { if (!this.chain.length) return true; const e = this.ends()[0]; return t[0] === e || t[1] === e; }
+  canR(t) { if (!this.chain.length) return true; const e = this.ends()[1]; return t[0] === e || t[1] === e; }
   playable(p) { return this.hands[p].map((_, i) => i).filter(i => this.canL(this.hands[p][i]) || this.canR(this.hands[p][i])); }
   yardLeft() { return this.yard.filter(Boolean).length; }
   turnOk(p) { return this.phase === 'play' && !this.dealing && this.over < 0 && p === this.cur; }
@@ -291,7 +297,8 @@ export class GameRoom {
   }
   place(p, i, side) {
     const t = this.hands[p].splice(i, 1)[0], [L, R] = this.ends();
-    if (side === 'R') this.chain.push(t[0] === R ? { a: t[0], b: t[1] } : { a: t[1], b: t[0] });
+    if (!this.chain.length) { this.chain = [{ a: t[0], b: t[1] }]; this.ci = 0; side = 'R'; }
+    else if (side === 'R') this.chain.push(t[0] === R ? { a: t[0], b: t[1] } : { a: t[1], b: t[0] });
     else { this.chain.unshift(t[1] === L ? { a: t[0], b: t[1] } : { a: t[1], b: t[0] }); this.ci++; }
     this.fx = { p, idx: side === 'R' ? this.chain.length - 1 : 0, id: ++this.fxn, dbl: t[0] === t[1] };
     this.passes = 0;
@@ -368,6 +375,21 @@ export class GameRoom {
   broadcast() {
     if (this.phase === 'lobby') return this.lobby();
     this.seats.forEach((s, p) => { if (s && s.ws) send(s.ws, this.view(p)); });
+  }
+  voiceNow() { return this.seats.map((s, p) => (s && !s.bot && s.vc ? { p, m: s.vm ? 1 : 0 } : null)).filter(Boolean); }
+  voiceList() { this.bcast({ t: 'vcs', v: this.voiceNow() }); }
+  // WebRTC signalling relay: audio itself flows peer-to-peer, the server only forwards small SDP / ICE messages between players in voice
+  relay(p, m) {
+    const s = this.seats[p], to = m.to, t = Number.isInteger(to) ? this.seats[to] : null;
+    if (!s || !s.vc || !t || !t.vc || !t.ws || to === p) return;
+    if (m.k !== 'offer' && m.k !== 'answer' && m.k !== 'ice') return;
+    const d = m.d;
+    if (!d || typeof d !== 'object') return;
+    let n; try { n = JSON.stringify(d).length; } catch (e) { return; }
+    if (n > (m.k === 'ice' ? 1200 : 9000)) return;
+    if (m.k === 'ice') { if (typeof d.candidate !== 'string') return; }
+    else if (typeof d.sdp !== 'string' || d.type !== m.k) return;
+    send(t.ws, { t: 'rtc', from: p, k: m.k, d });
   }
   bcast(o) { this.seats.forEach(s => { if (s && s.ws) send(s.ws, o); }); }
 }
