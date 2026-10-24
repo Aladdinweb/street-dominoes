@@ -6,8 +6,8 @@ android {
     defaultConfig {
         applicationId = "com.iline.streetdominoes"
         minSdk = 26; targetSdk = 34
-        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 10206
-        versionName = (project.findProperty("versionName") as String?) ?: "1.2.6"
+        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 10207
+        versionName = (project.findProperty("versionName") as String?) ?: "1.2.7"
         buildConfigField("String", "REPO", "\"Aladdinweb/street-dominoes\"")
     }
     buildFeatures { buildConfig = true }

@@ -32,3 +32,25 @@ body{background:radial-gradient(circle at 50% -10%,#1d1d25,#08080b 70%) fixed;ov
 .sm.on,.chips b.on,.th.on,.mic.on{box-shadow:0 0 0 1px var(--ac),0 0 16px var(--red-glow),inset 0 0 12px rgba(225,29,46,.2)}
 .big:focus-visible,.sm:focus-visible,.chips b:focus-visible{outline:2px solid var(--ac);outline-offset:3px}
 @media (prefers-reduced-motion:reduce){.big,.sm,.seat button,.mic,.chips b,.pcard,.th{transition:none}}
+/*sd127:begin*/
+/* v1.2.7: avatars, photo, flag, active-turn pulse */
+.avi{width:34px;height:34px;border-radius:50%;object-fit:cover;display:block}
+.pb .av.im{padding:0;overflow:hidden;background:var(--c)}
+.pb .av.im .avi{width:100%;height:100%}
+.av2 .avi{width:38px;height:38px}
+.pav{overflow:hidden}.pav .avi{width:100%;height:100%}
+.sdg b{padding:3px}.sdg .avi{width:36px;height:36px}
+.sdl{margin:14px 0 6px;font-size:13px;font-weight:700;color:var(--mu)}
+#pp select.pni{color:#fff;background:#0e121b}
+
+/* Active player: pulsing glow + expanding ring around the HUD frame */
+.pb{position:relative}
+.pb.act{animation:sdPulse 1.25s ease-in-out infinite}
+.pb.act::after{content:"";position:absolute;inset:-5px;border-radius:inherit;border:2px solid var(--c);pointer-events:none;animation:sdRing 1.25s ease-out infinite}
+@keyframes sdPulse{
+  0%,100%{box-shadow:0 0 0 2px var(--c),0 0 10px var(--c),0 0 22px var(--c)}
+  50%{box-shadow:0 0 0 3px var(--c),0 0 18px var(--c),0 0 40px var(--c)}}
+@keyframes sdRing{0%{opacity:.85;transform:scale(1)}100%{opacity:0;transform:scale(1.16)}}
+@media (prefers-reduced-motion:reduce){
+  .pb.act{animation:none;box-shadow:0 0 0 3px var(--c),0 0 20px var(--c)}.pb.act::after{animation:none;opacity:0}}
+/*sd127:end*/

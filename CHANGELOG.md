@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.7
+- Profile: photo upload (250x250 crop, stored in localStorage), 12 street avatars, country flag picker
+- HUD: your photo/avatar and flag on your seat; stronger pulsing glow on the active player
+- Localized Pass voice hook (device TTS; PassVoice.files / window.onPassVoice to override)
+- Default player name guard (Player 1)
+
 ## 1.2.6
 - Invite links: https://street-dominoes.pages.dev/?room=CODE joins that online room on open
 - Online lobby: Copy Invite Link (and Share where supported)

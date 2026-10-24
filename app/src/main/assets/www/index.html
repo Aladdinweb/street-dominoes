@@ -226,6 +226,10 @@ const TA={en:{invCopy:'Copy Invite Link',invShare:'Share',invCopied:'✔ Link co
 fr:{invCopy:'Copier le lien d’invitation',invShare:'Partager',invCopied:'✔ Lien copié',invMsg:'Rejoins mon salon Street Dominoes',invJoin:'Rejoindre le salon',invName:'Votre nom',invGo:'Rejoindre'},
 ar:{invCopy:'نسخ رابط الدعوة',invShare:'مشاركة',invCopied:'✔ تم نسخ الرابط',invMsg:'انضم إلى غرفتي في Street Dominoes',invJoin:'الانضمام إلى الغرفة',invName:'اسمك',invGo:'انضمام'}};
 for(const k in TA)Object.assign(T[k],TA[k]);
+const TB={en:{pfPhoto:'Photo',pfUpload:'Upload photo',pfRemove:'Remove photo',pfStreet:'Street avatars',pfCountry:'Country / flag',pfNone:'No flag',pfPhotoErr:'Could not use this photo. Try a smaller or different image.'},
+fr:{pfPhoto:'Photo',pfUpload:'Importer une photo',pfRemove:'Supprimer la photo',pfStreet:'Avatars de rue',pfCountry:'Pays / drapeau',pfNone:'Aucun drapeau',pfPhotoErr:'Impossible d’utiliser cette photo. Essayez une image plus petite ou différente.'},
+ar:{pfPhoto:'صورة',pfUpload:'رفع صورة',pfRemove:'حذف الصورة',pfStreet:'أفاتار الشارع',pfCountry:'الدولة / العلم',pfNone:'بدون علم',pfPhotoErr:'تعذّر استخدام هذه الصورة. جرّب صورة أصغر أو مختلفة.'}};
+for(const k in TB)Object.assign(T[k],TB[k]);
 const TXN={en:['Classic Green Felt','Dark Modern Wood','Royal Red Velvet','Deep Blue Slate','Marble Luxury'],fr:['Feutre vert classique','Bois moderne sombre','Velours rouge royal','Ardoise bleu profond','Marbre luxe'],ar:['لبّاد أخضر كلاسيكي','خشب عصري داكن','مخمل أحمر ملكي','أردواز أزرق عميق','رخام فاخر']};
 const AV=['😎','🦁','🐯','🦊','🐼','🦅','🐉','👑','🎩','🤠','🧔','🥷'];
 const LG=['en','fr','ar'],LN=['EN','FR','عربي'],COL=['#e5484d','#2fb36d','#f2b705','#3e7bfa'];
@@ -349,7 +353,7 @@ const sparks=Array.from({length:16},(_,i)=>`<i class="sp" style="--a:${i*22.5}de
 $('rs').innerHTML=`<div class="vh"><div class="spk">${sparks}</div><div class="vt">${wt<0?'🤝':'🏆'} ${wt<0?x.drw:`${tw(wt)} ${x.win}`}${blocked?' 🔒 '+x.blocked:''}</div>${wt>=0?`<div class="vp">+<span id="cu1">0</span> ${x.pips}</div>`:''}</div>${ms?`<div class="mw">🏆 ${tw(mt)} ${x.mwin} (${target})</div>`:''}${pay}${card(0)}${card(1)}${net.online?(ms?`<button class="big" data-r="orm">${x.rematch}</button><button class="big alt" data-r="np">${x.newp}</button>`:`<p>${x.nxt}</p>`):net.client?`<p>${x.lWh}</p>`:`<button class="big" data-r="${ms?'re':'go'}">${ms?x.rematch:x.cont}</button><button class="big alt" data-r="np">${x.newp}</button>`}`;
 $('rs').innerHTML+=`<div class="ftm">${CR}</div>`;$('res').hidden=false;snd.win();if(wt>=0)countUp('cu1',gain,900)}
 function toMenu(){dealTok++;dealing=false;$('fx').innerHTML='';$('ov').hidden=true;$('pm').hidden=true;net.end();if(net.host){Native.hostStop();net.host=false;net.conn={}}nmode=0;seat=seat.map(v=>v===3?2:v);inMenu=true;gid++;inGame=false;score=[0,0];nextStart=null;stake=0;$('res').hidden=true;render()}
-function menuUI(){const x=t();$('menu').innerHTML=`<div class="pcard" id="pc"><span class="av2">${AV[avs[0]]}</span><b>${nm(0)}</b><em class="ttl2">${titleOf(stats.mw,lang)}</em><small>🪙 ${coins.toLocaleString()}${NV?' · v'+NV:''}</small></div><button class="big" data-m="solo">🤖 ${x.mSolo}</button><button class="big alt" data-m="lan">📡 ${x.mLan}</button><button class="big alt" data-m="online">🌐 ${x.mOnline}</button>`}
+function menuUI(){const x=t();$('menu').innerHTML=`<div class="pcard" id="pc"><span class="av2">${avBig()}</span><b>${nm(0)}${prof2.cc?' '+flagEmoji(prof2.cc):''}</b><em class="ttl2">${titleOf(stats.mw,lang)}</em><small>🪙 ${coins.toLocaleString()}${NV?' · v'+NV:''}</small></div><button class="big" data-m="solo">🤖 ${x.mSolo}</button><button class="big alt" data-m="lan">📡 ${x.mLan}</button><button class="big alt" data-m="online">🌐 ${x.mOnline}</button>`}
 const HAND='<svg viewBox="0 0 60 70" width="50"><g fill="#e8b48a" stroke="#b9855e" stroke-width="1.5"><rect x="12" y="30" width="34" height="34" rx="12"/><rect x="12" y="8" width="8" height="30" rx="4"/><rect x="22" y="3" width="8" height="35" rx="4"/><rect x="32" y="6" width="8" height="32" rx="4"/><rect x="42" y="14" width="8" height="26" rx="4"/><rect x="2" y="34" width="8" height="22" rx="4" transform="rotate(-25 6 45)"/></g></svg>';
 let dealing=false,dc=[0,0,0,0],jd=false,fxo=null,fxn=0,dealTok=0,dealSkip=false,ppos={};
 const yardLeft=()=>yard.filter(Boolean).length,tm=p=>gm==='1v1'?(p===2?1:0):p%2,TP=k=>gm==='1v1'?[k?2:0]:[k,k+2];
@@ -542,11 +546,75 @@ if(r.ok){pend.shift();if(!pend.length)adopt(r.j.profile)}else if(r.status>=400&&
 tries=0;savePend()}
 syncSt='ok'}catch(e){syncSt='off'}
 savePend();syncBusy=false}
+/*sd127-profile*/
+/* Street avatars: procedural SVG (no image files). spec = [bg, skin, hair, accessory] */
+const STREET_SPECS=[
+ ['#e11d2e','#f1c27d','#1a1a1a','capback'],['#2b2b33','#8d5524','#0d0d0d','shades'],['#f4f4f5','#c68642','#111','beanie'],
+ ['#5b1018','#ffdbac','#3b2314','hood'],['#33333d','#e0ac69','#1a1a1a','phones'],['#2b2b33','#6f4423','#0d0d0d','bandana'],
+ ['#1d1d24','#f1c27d','#d9d9de','mohawk'],['#f4f4f5','#8d5524','#111','afro'],['#7a0b14','#c68642','#222','durag'],
+ ['#2b2b33','#ffdbac','#e11d2e','spikes'],['#e11d2e','#e0ac69','#111','snap'],['#1d1d24','#6f4423','#0d0d0d','chain']];
+function streetSvg(i){const [bg,sk,hr,ac]=STREET_SPECS[i%STREET_SPECS.length];
+ const eyes=ac==='shades'?`<rect x="19" y="27" width="11" height="6" rx="2" fill="#111"/><rect x="34" y="27" width="11" height="6" rx="2" fill="#111"/><rect x="29" y="29" width="6" height="2" fill="#111"/>`:`<circle cx="25" cy="30" r="2.2" fill="#111"/><circle cx="39" cy="30" r="2.2" fill="#111"/>`;
+ const A={
+  capback:`<path d="M15 25a17 15 0 0 1 34 0z" fill="#e11d2e"/><rect x="11" y="24" width="14" height="4" rx="2" fill="#a30f1d"/>`,
+  shades:`<path d="M16 24a16 13 0 0 1 32 0z" fill="${hr}"/>`,
+  beanie:`<path d="M14 26a18 17 0 0 1 36 0z" fill="#e11d2e"/><rect x="13" y="24" width="38" height="5" rx="2.5" fill="#f4f4f5"/>`,
+  hood:`<path d="M10 52V30a22 24 0 0 1 44 0v22z" fill="#1d1d24"/><ellipse cx="32" cy="33" rx="15" ry="17" fill="${sk}"/>`,
+  phones:`<path d="M16 28a16 17 0 0 1 32 0" fill="none" stroke="#f4f4f5" stroke-width="3"/><rect x="12" y="27" width="6" height="11" rx="3" fill="#e11d2e"/><rect x="46" y="27" width="6" height="11" rx="3" fill="#e11d2e"/>`,
+  bandana:`<path d="M15 26a17 14 0 0 1 34 0z" fill="#e11d2e"/><path d="M48 24l7 4-7 3z" fill="#e11d2e"/>`,
+  mohawk:`<path d="M28 12l4-8 4 8v14h-8z" fill="${hr}"/>`,
+  afro:`<circle cx="32" cy="22" r="19" fill="${hr}"/>`,
+  durag:`<path d="M15 27a17 15 0 0 1 34 0z" fill="#1d1d24"/><path d="M15 27l-8 8 9-2z" fill="#1d1d24"/>`,
+  spikes:`<path d="M17 25l3-10 5 7 4-11 4 11 5-7 3 10z" fill="${hr}"/>`,
+  snap:`<path d="M15 25a17 14 0 0 1 34 0z" fill="#1d1d24"/><rect x="14" y="23" width="36" height="4" rx="2" fill="#f4f4f5"/><rect x="38" y="25" width="16" height="4" rx="2" fill="#f4f4f5"/>`,
+  chain:`<path d="M16 24a16 13 0 0 1 32 0z" fill="${hr}"/>`}[ac];
+ const body=ac==='hood'?'':`<path d="M8 64c0-13 11-18 24-18s24 5 24 18z" fill="${ac==='chain'?'#f4f4f5':'#1d1d24'}"/>`;
+ const chain=ac==='chain'?`<path d="M22 50q10 9 20 0" fill="none" stroke="#e11d2e" stroke-width="2.5" stroke-dasharray="3 2"/>`:'';
+ const head=ac==='hood'?'':`<ellipse cx="32" cy="33" rx="15" ry="17" fill="${sk}"/>`;
+ const back=ac==='afro'||ac==='hood'?A:'';const front=ac==='afro'||ac==='hood'?'':A;
+ const hoodTop=ac==='hood'?`<path d="M14 30a18 17 0 0 1 36 0c-4-6-10-9-18-9s-14 3-18 9z" fill="#1d1d24"/>`:'';
+ return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="32" fill="${bg}"/>${back.includes('circle')?back:''}${body}${ac==='hood'?A.split('<ellipse')[0]:''}${head}${ac==='hood'?'<ellipse cx="32" cy="33" rx="15" ry="17" fill="'+sk+'"/>':''}${eyes}<path d="M26 40q6 5 12 0" fill="none" stroke="#3a1f0f" stroke-width="2" stroke-linecap="round"/>${hoodTop}${front}${chain}</svg>`}
+
+const streetUri=i=>'data:image/svg+xml;utf8,'+encodeURIComponent(streetSvg(i));
+const CC='AF AL DZ AD AO AG AR AM AU AT AZ BS BH BD BB BY BE BZ BJ BT BO BA BW BR BN BG BF BI CV KH CM CA CF TD CL CN CO KM CG CD CR CI HR CU CY CZ DK DJ DM DO EC EG SV GQ ER EE SZ ET FJ FI FR GA GM GE DE GH GR GD GT GN GW GY HT HN HU IS IN ID IR IQ IE IT JM JP JO KZ KE KI KW KG LA LV LB LS LR LY LI LT LU MG MW MY MV ML MT MH MR MU MX FM MD MC MN ME MA MZ MM NA NR NP NL NZ NI NE NG KP MK NO OM PK PW PA PG PY PE PH PL PT QA RO RU RW KN LC VC WS SM ST SA SN RS SC SL SG SK SI SB SO ZA KR SS ES LK SD SR SE CH SY TJ TZ TH TL TG TO TT TN TR TM TV UG UA AE GB US UY UZ VU VA VE VN YE ZM ZW PS TW HK MO XK'.split(' ').filter(c=>c!=='IL');
+const flagEmoji=c=>CC.includes(c)?String.fromCodePoint(...[...c].map(ch=>127397+ch.charCodeAt(0))):'';
+const P2K='dm_prof2',PHK='dm_photo';
+let prof2={k:'emoji',s:0,cc:''},photo='';
+try{const o=JSON.parse(localStorage.getItem(P2K)||'{}');if(o&&typeof o==='object'){prof2.k=['emoji','street','photo'].includes(o.k)?o.k:'emoji';prof2.s=(+o.s||0)%STREET_SPECS.length;prof2.cc=CC.includes(o.cc)?o.cc:''}}catch(e){}
+try{photo=localStorage.getItem(PHK)||''}catch(e){}
+if(!/^data:image\/jpeg;base64,/.test(photo))photo='';
+if(prof2.k==='photo'&&!photo)prof2.k='emoji';
+const saveProf2=()=>{try{localStorage.setItem(P2K,JSON.stringify(prof2))}catch(e){}};
+/* the photo button needs a WebView file chooser; in the APK it appears only when the native side declares support */
+const CAN_PHOTO=!NA||(typeof Native.supportsFilePicker==='function'&&!!Native.supportsFilePicker());
+const meSeat=()=>net.client&&typeof net.own==='number'?net.own:0;
+const myImg=()=>prof2.k==='photo'&&photo?photo:prof2.k==='street'?streetUri(prof2.s):'';
+const avBig=()=>{const u=myImg();return u?`<img class="avi" src="${u}" alt="">`:AV[avs[0]]};
+const avSpan=p=>{if(seat[p]===2)return'<span class="av">🤖</span>';const u=p===meSeat()?myImg():'';return u?`<span class="av im"><img class="avi" src="${u}" alt=""></span>`:`<span class="av">${AV[avs[p]]}</span>`};
+const flagOf=p=>p===meSeat()&&prof2.cc?' '+flagEmoji(prof2.cc):'';
+const squareCrop=(w,h)=>{const m=Math.min(w,h);return{sx:(w-m)/2,sy:(h-m)/2,m}};
+function readPhoto(f){const bad=()=>{const x=t();upShow(`<h3>📷</h3><p>${x.pfPhotoErr}</p><button class="big" id="upx">${x.upOk}</button>`)};
+if(!f||!/^image\//.test(f.type||'')){bad();return}
+const url=URL.createObjectURL(f),img=new Image();
+img.onload=()=>{let ok=false;try{const S=250,c=document.createElement('canvas');c.width=c.height=S;const g=c.getContext('2d'),r=squareCrop(img.naturalWidth,img.naturalHeight);g.fillStyle='#fff';g.fillRect(0,0,S,S);g.drawImage(img,r.sx,r.sy,r.m,r.m,0,0,S,S);const d=c.toDataURL('image/jpeg',.82);
+if(/^data:image\/jpeg;base64,/.test(d)){localStorage.setItem(PHK,d);photo=d;prof2.k='photo';saveProf2();ok=true}}catch(e){}
+URL.revokeObjectURL(url);if(ok){ProfileModal();render()}else bad()};
+img.onerror=()=>{URL.revokeObjectURL(url);bad()};img.src=url}
+function ccOptions(){let dn=null;try{dn=new Intl.DisplayNames([lang],{type:'region'})}catch(e){}
+const nn=c=>{try{return(dn&&dn.of(c))||c}catch(e){return c}};
+return CC.map(c=>({c,n:nn(c)})).sort((a,b)=>a.n.localeCompare(b.n,lang)).map(o=>`<option value="${o.c}"${o.c===prof2.cc?' selected':''}>${flagEmoji(o.c)} ${esc(o.n)}</option>`).join('')}
+function profExtras(x){return`${CAN_PHOTO?`<div class="sdl">${x.pfPhoto}</div><div class="sw chips"><b id="phb">📷 ${x.pfUpload}</b>${photo?`<b id="phx">🗑 ${x.pfRemove}</b>`:''}</div><input type="file" id="phf" accept="image/*" hidden>`:''}<div class="sdl">${x.pfStreet}</div><div class="sw chips ag sdg">${STREET_SPECS.map((_,k)=>`<b data-sav="${k}" class="${prof2.k==='street'&&prof2.s===k?'on':''}"><img class="avi" src="${streetUri(k)}" alt=""></b>`).join('')}</div><div class="sdl">${x.pfCountry}</div><select id="pcc" class="pni"><option value="">🌍 ${x.pfNone}</option>${ccOptions()}</select>`}
+/* pass voice: device TTS in the UI language; drop audio files into PassVoice.files or return true from window.onPassVoice(seat,lang) to replace it */
+const PassVoice={files:{},words:{en:'Pass',fr:'Passe',ar:'باس'},tags:{en:'en-US',fr:'fr-FR',ar:'ar-SA'},
+play(p){if(mute||!vol)return;const l=lang;if(typeof window.onPassVoice==='function'&&window.onPassVoice(p,l)===true)return;
+const say=()=>{try{const S=window.speechSynthesis;if(!S||typeof SpeechSynthesisUtterance==='undefined')return;S.cancel();const u=new SpeechSynthesisUtterance(this.words[l]||this.words.en);u.lang=this.tags[l]||'en-US';u.volume=Math.min(1,vol);u.rate=1.05;u.pitch=[1,.85,1.15,.95][p]||1;S.speak(u)}catch(e){}};
+const f=this.files[l];if(f){try{const a=new Audio(f);a.volume=Math.min(1,vol);a.onerror=say;const r=a.play();if(r&&r.catch)r.catch(say);return}catch(e){}}say()}};
 function ProfileModal(){const x=t(),p=profileData(),w=stats.mw,i=titleIdx(w),hi=TITLES[i][0],nx=hi<1e9?hi+1:null,pv=i?TITLES[i-1][0]+1:0,pr=nx?Math.min(100,(w-pv)*100/(nx-pv)):100;
-$('pp').innerHTML=`<div class="pmh"><span class="pav">${p.avatar}</span><div style="flex:1"><input id="pn2" class="pni" maxlength="12" value="${esc(p.name)}"><div class="ttl">${titleOf(w,lang)}</div></div></div>
+$('pp').innerHTML=`<div class="pmh"><span class="pav">${avBig()}</span><div style="flex:1"><input id="pn2" class="pni" maxlength="12" value="${esc(p.name)}"><div class="ttl">${titleOf(w,lang)}</div></div></div>
 <div class="bar"><i style="width:${pr}%;background:var(--ac)"></i></div><small>${nx?`${x.nextT}: ${titleOf(nx,lang)} (${w}/${nx})`:x.maxT}</small>
 <div class="sg"><div><b>${p.rankPoints}</b><span>${x.rankP}</span></div><div><b>${p.totalWins}</b><span>${x.totW}</span></div><div><b>${p.winRate}</b><span>${x.winR}</span></div><div><b>${p.blockedWins}</b><span>${x.blkW}</span></div><div><b>${p.winStreak}</b><span>${x.winS}</span></div><div><b>${stats.mp}</b><span>${x.matchesS}</span></div></div>
-<div class="sw chips ag">${AV.map((a,k)=>`<b data-pav="${k}" class="${k===avs[0]?'on':''}">${a}</b>`).join('')}</div>
+<div class="sw chips ag">${AV.map((a,k)=>`<b data-pav="${k}" class="${prof2.k==='emoji'&&k===avs[0]?'on':''}">${a}</b>`).join('')}</div>
+${profExtras(x)}
 <div class="lanb">🆔 ${x.pidL}: <b>${esc(pid)}</b><br>${syncSt==='ok'?'☁ '+x.synced:'⚠ '+x.offline}${pend.length?' ('+pend.length+')':''}</div>
 <button class="big" id="pmx">${x.close}</button><div class="ftm">${CR}</div>`;$('pm').hidden=false}
 const Skins={reg:{table:[],tile:[],audio:[]},cur:{table:0,tile:0,audio:0},
@@ -562,7 +630,7 @@ snd.lock=()=>{noise(.1,0,700,.9);tone(180,.2,'square');tone(120,.3,'square',.1)}
 const cinMap=new Map();
 let psx=null,psn=0;
 snd.knock=()=>{const k=w=>{noise(.07,w,260*AUD.f,1.1*AUD.g);tone(110*AUD.f,.12,'sine',w);tone(70*AUD.f,.2,'sine',w+.01)};k(0);k(.15);tone(520*AUD.f,.08,'triangle',.34);tone(390*AUD.f,.12,'triangle',.42)};
-function showPass(p){const ps=ppos[p],c=ps&&$('s'+ps);if(!c||!c.querySelector)return;const pb=c.querySelector('.pb')||c;if(!pb.getBoundingClientRect)return;
+function showPass(p){try{PassVoice.play(p)}catch(e){}const ps=ppos[p],c=ps&&$('s'+ps);if(!c||!c.querySelector)return;const pb=c.querySelector('.pb')||c;if(!pb.getBoundingClientRect)return;
 const r=pb.getBoundingClientRect(),W=window.innerWidth||360,e=mkEl('pas',t().passed);e.style.top=(r.top+r.height/2)+'px';
 if(ps==='R'||r.right+96>W)e.style.right=(W-r.left+6)+'px';else e.style.left=(r.right+6)+'px';
 $('fx').appendChild(e);setTimeout(()=>e.remove(),1500)}
@@ -609,7 +677,7 @@ if(p===net.own){if(!Voice.on)voiceJoin();else voiceMute(!Voice.muted)}
 else{if(Voice.rmute.has(p))Voice.rmute.delete(p);else Voice.rmute.add(p);const c=Voice.peers.get(p);if(c&&c.audio)c.audio.muted=Voice.rmute.has(p);render()}}
 let gain=0,wt=-1,pcol={};
 const later=()=>{const g=gid;setTimeout(()=>{if(g===gid&&over>=0)result()},800)};
-function badge(p,ps){const g=ps==='T'||ps==='B';return`<div class="pb ${p===cur&&over<0?'act':''}" style="--c:${g?'#4ade80':'#f4f4f5'}"><span class="av">${seat[p]===2?'🤖':AV[avs[p]]}</span><span>${nm(p)}</span><small>${MINI}${dealing?dc[p]:hands[p].length} · ${score[tm(p)]}</small>${micBtn(p)}</div>`}
+function badge(p,ps){const g=ps==='T'||ps==='B';return`<div class="pb ${p===cur&&over<0?'act':''}" style="--c:${g?'#4ade80':'#f4f4f5'}">${avSpan(p)}<span>${nm(p)}${flagOf(p)}</span><small>${MINI}${dealing?dc[p]:hands[p].length} · ${score[tm(p)]}</small>${micBtn(p)}</div>`}
 function render(){const x=t();
 document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?'rtl':'ltr';$('ti').textContent=x.ti;
 $('bar').innerHTML=LG.map((l,i)=>`<button class="sm ${l===lang?'on':''}" data-l="${l}">${LN[i]}</button>`).join(' ')+` <button class="sm" data-mute="1">${mute?'🔇':'🔊'}</button> <button class="sm" data-set="1">⚙</button>`+(inGame?` <button class="sm" data-menu="1">☰ ${x.menu}</button>`:'');
@@ -695,6 +763,18 @@ $('bk').onclick=()=>{if(net.host||net.client)setMode(0);inMenu=true;render()};
 $('nt').onclick=e=>{const b=e.target.closest('b');if(b)setMode(+b.dataset.nm)};
 $('lan').onclick=e=>{if(onlineClick(e.target.id))return;if(e.target.id==='jc'){const ip=$('hip').value.trim();if(!ip)return;net.last=ip;net.msg='\u2026';net.myname=(names[0]||'').trim()||'Player';net.bk={names:[...names],avs:[...avs]};net.client=true;Native.connect('ws://'+ip+':'+net.port);render()}};
 $('upp').onclick=e=>{const kb=e.target.closest('[data-k]');if(kb){sendRx(kb.dataset.k);$('up').hidden=true;return}const id=e.target.id;if(id==='upx')$('up').hidden=true;else if(id==='s11'||id==='s22'){$('up').hidden=true;gm=id==='s11'?'1v1':'2v2';seat=gm==='1v1'?[1,0,2,0]:[1,2,2,2];stake=0;newMatch();startRound()}else if(id==='spp'){$('up').hidden=true;gm='1v1';stake=0;seat=[1,0,1,0];if(/^Player \d$/.test(names[2]))names[2]='Player 2';newMatch();startRound()}else if(id==='qy'){$('up').hidden=true;toMenu()}else if(id==='qn')$('up').hidden=true;else if(id==='upgo'){const u=e.target.dataset.u;$('upp').innerHTML=`<h3>${t().upDl}</h3><h2 id="upb">0%</h2>`;Native.installUpdate(u)}};
+/*sd127-boot*/
+if(!String(names[0]||'').trim())names[0]='Player 1';
+(function(){const pp=$('pp');
+pp.addEventListener('click',e=>{const t0=e.target,cl=s=>t0.closest&&t0.closest(s);
+if(cl('[data-pav]')){prof2.k='emoji';saveProf2();ProfileModal();render();return}
+const sv=cl('[data-sav]');if(sv){prof2.k='street';prof2.s=(+sv.dataset.sav||0)%STREET_SPECS.length;saveProf2();ProfileModal();render();return}
+if(t0.id==='phb'){const f=$('phf');if(f)f.click();return}
+if(t0.id==='phx'){try{localStorage.removeItem(PHK)}catch(x){}photo='';if(prof2.k==='photo')prof2.k='emoji';saveProf2();ProfileModal();render()}});
+pp.addEventListener('change',e=>{const t0=e.target;
+if(t0.id==='phf'){const f=t0.files&&t0.files[0];t0.value='';if(f)readPhoto(f);return}
+if(t0.id==='pcc'){const v=String(t0.value||'');prof2.cc=CC.includes(v)?v:'';saveProf2();render();return}
+if(t0.id==='pn2'&&!t0.value.trim()){names[0]='Player 1';t0.value='Player 1';saveSet();render()}})})();
 applyTheme();render();setTimeout(syncProfile,600);
 /*sd126-boot*/
 (function(){let c='';try{c=(new URLSearchParams(location.search).get('room')||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8)}catch(e){}
