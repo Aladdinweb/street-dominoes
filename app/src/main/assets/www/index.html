@@ -414,10 +414,10 @@ function askQuit(){const x=t();upShow(`<h3>⚠️ ${x.qT}</h3><p>${x.qM}${stake?
 window.onBackPress=()=>{if(!$('pm').hidden){$('pm').hidden=true;render();return true}if(!$('up').hidden){$('up').hidden=true;return true}if(!$('set').hidden){$('set').hidden=true;return true}if(inGame){askQuit();return true}if(!inMenu){if(net.host||net.client)setMode(0);inMenu=true;render();return true}return false};
 function coinsRules(){if(stake){seat[0]=1;for(const i of [1,2,3])if(seat[i]===1)seat[i]=2}}
 function newMatch(){if(stake&&coins<stake){upShow(`<h3>🪙 ${t().nc}</h3><button class="big" id="upx">${t().upOk}</button>`);return false}score=[0,0];nextStart=null;mid++;settled=false;if(stake){coins-=stake;saveSet()}return true}
-const STRICT_MIN=[.7,.65],ZL=[1,.9,.85,.8,.75,.7,.65,.6,.55],MT=[0,1,2,3,99,99,99,99,99],esc=s=>String(s).replace(/[<>&"']/g,'');
+const STRICT_MIN=[.7,.65],ZL=[1,.9,.85,.8,.75,.7,.65,.6,.55,.5,.45],MT=[0,1,2,3,99,99,99,99,99,99,99],esc=s=>String(s).replace(/[<>&"']/g,'');
 let cinEl=null,lastTf={s:1,dx:0,dy:0},lastLay=[],zoomS=1,drag=null,dragSup=false,dropFrom=null,dragFx=[];
-function layoutTry(W,H,strict,look){if(!chain.length)return{out:[],ok:true,turns:0};
-const S=24,L=48,o=2,m=16,out=[],cx=W/2,cy=H/2,c=chain[ci],dc=c.a===c.b,cw=dc?S:L,chh=dc?L:S;let ok=true,turns=0;
+function layoutTry0(W,H,strict,look,ox,oy){if(!chain.length)return{out:[],ok:true,turns:0};
+const S=24,L=48,o=2,m=16,out=[],cx=W/2+(ox||0),cy=H/2+(oy||0),c=chain[ci],dc=c.a===c.b,cw=dc?S:L,chh=dc?L:S;let ok=true,turns=0;
 out.push({l:c.a,r:c.b,x:cx-cw/2,y:cy-chh/2,w:cw,h:chh,v:dc,i:ci,dbl:dc});let last=out[0];
 const ov=(r,q,g)=>r.x<q.x+q.w+g&&q.x<r.x+r.w+g&&r.y<q.y+q.h+g&&q.y<r.y+r.h+g,
 hit=r=>out.some(q=>ov(r,q,q===last?-4:2)),
@@ -456,9 +456,17 @@ if(early&&best.rm<2){put(q,r,d,hz===!!q.d);f=e;continue}   /* no good place to t
 if(best.rm<0||(strict&&q.d))ok=false;   /* a double is never a corner stone */
 turns++;
 put(q,best.c2.r,best.nd,best.nd%2===1);lc=best.c2.lc;f=best.c2.f;d=best.nd}};
+if((ox||oy)&&!bnd(out[0]))ok=false;   /* a shifted start must still sit inside the frame */
 walk(chain.slice(ci+1).map((q,k)=>({p:q.a,q:q.b,d:q.a===q.b,idx:ci+1+k})),cx+cw/2,cy,0);
 walk(chain.slice(0,ci).reverse().map((q,k)=>({p:q.b,q:q.a,d:q.a===q.b,idx:ci-1-k})),cx-cw/2,cy,2);
 return{out,ok,turns}}
+/*sd128*/
+/* The first stone need not sit at the exact centre (the renderer re-centres the bounding box anyway). When a strict layout fails, slide the start point
+   sideways / up / down so a long run on one side can use the room the other side leaves free, instead of pivoting beside a double. */
+const SHIFTS=(()=>{const a=[[0,0]],st=24;for(let k=1;k<=8;k++)a.push([st*k,0],[-st*k,0]);for(let k=1;k<=6;k++)a.push([0,st*k],[0,-st*k]);
+for(let k=1;k<=3;k++)for(let j=1;j<=2;j++)a.push([st*k,st*j],[-st*k,st*j],[st*k,-st*j],[-st*k,-st*j]);return a})();
+function layoutTry(W,H,strict,look){const r=layoutTry0(W,H,strict,look,0,0);if(!strict||r.ok)return r;
+for(let i=1;i<SHIFTS.length;i++){const q=layoutTry0(W,H,strict,look,SHIFTS[i][0],SHIFTS[i][1]);if(q.ok)return q}return r}
 const layout=(W,H)=>layoutTry(W,H).out;
 function layoutFit(CW,CH,start){const k0=Math.max(0,ZL.indexOf(start||1));let r=null;
 for(const [strict,look,kmax] of[[true,false,ZL.indexOf(STRICT_MIN[0])+1],[true,true,ZL.indexOf(STRICT_MIN[1])+1],[true,true,ZL.length],[false,false,ZL.length]]){let fo=null;

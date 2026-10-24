@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.8
+- Layout: when a strict layout fails the start stone slides sideways/up/down (the board is re-centred anyway) so a run of doubles near the frame gets room instead of the stone after a double turning
+- Layout: zoom floor extended to 0.45 for rare long chains
+
 ## 1.2.7
 - Profile: photo upload (250x250 crop, stored in localStorage), 12 street avatars, country flag picker
 - HUD: your photo/avatar and flag on your seat; stronger pulsing glow on the active player
