@@ -1,42 +1,34 @@
-/* Street Dominoes - modern UI layer. Add <link rel="stylesheet" href="ux-layer.css"> LAST in <head>.
-   Selectors are generic; rename them to your real classes (.btn, .modal, .hud, ...). */
-:root{
-  --bg:#0b0b0d; --surface:#15151a; --glass:rgba(24,24,30,.62); --glass-edge:rgba(255,255,255,.10);
-  --red:#e11d2e; --red-glow:rgba(225,29,46,.55); --text:#fff; --muted:#a8a8b3;
-  --gold:#f5c542; /* VIP / special states ONLY */
-  --ease:cubic-bezier(.2,.8,.2,1);
-}
-body{background:radial-gradient(120% 80% at 50% 0%,#17171d 0%,var(--bg) 60%);color:var(--text);
-  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+/* Street Dominoes 1.2.4 - UI layer. Loaded after the page <style>; targets the real game classes.
+   Dark charcoal + red accents + white type. Gold stays on win / blocked-table / VIP states only. */
+:root:root:root:root{--ac:#f43f4f;--red:#e11d2e;--red-glow:rgba(225,29,46,.5);--vip:#f5c542;
+  --glass:rgba(18,22,32,.68);--glass-edge:rgba(255,255,255,.10);--ease:cubic-bezier(.2,.8,.2,1)}
+body{background:radial-gradient(circle at 50% -10%,#1d1d25,#08080b 70%) fixed;overflow-x:hidden}
 
-/* Glass surfaces: modals + player HUDs */
-.modal,.sheet,.hud,.player-card,.profile-card,.overlay-card{
-  background:var(--glass);border:1px solid var(--glass-edge);border-radius:18px;
-  -webkit-backdrop-filter:blur(14px) saturate(140%);backdrop-filter:blur(14px) saturate(140%);
-  box-shadow:0 12px 40px rgba(0,0,0,.55),inset 0 0 22px rgba(255,255,255,.04),inset 0 1px 0 rgba(255,255,255,.10);
-}
-.hud.active,.player-card.active{border-color:var(--red);
-  box-shadow:0 0 0 1px var(--red),0 0 22px var(--red-glow),inset 0 0 22px rgba(225,29,46,.18)}
-.vip,.player-card.vip{border-color:var(--gold);box-shadow:0 0 18px rgba(245,197,66,.45),inset 0 0 18px rgba(245,197,66,.12)}
-.vip .name,.badge-vip{color:var(--gold)}
+/* Glass panels: settings, profile, results, update */
+#sp,#pp,#rs,#upp{
+  background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,0) 45%),var(--glass);
+  border-color:var(--ac);-webkit-backdrop-filter:blur(14px) saturate(140%);backdrop-filter:blur(14px) saturate(140%);
+  box-shadow:0 14px 44px rgba(0,0,0,.6),inset 0 0 26px rgba(255,255,255,.05),inset 0 1px 0 rgba(255,255,255,.12)}
+#set,#res,#pm,#up{-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.rr,.pcard,.lanb,.sg div{box-shadow:inset 0 0 14px rgba(255,255,255,.04)}
 
-/* Sleek buttons */
-button,.btn{
-  font:600 15px/1 inherit;color:var(--text);padding:13px 20px;border-radius:14px;cursor:pointer;
-  border:1px solid var(--glass-edge);
-  background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.02)),var(--surface);
-  box-shadow:0 6px 18px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.12);
-  transition:transform .18s var(--ease),box-shadow .18s var(--ease),border-color .18s var(--ease);
-  touch-action:manipulation;
-}
-button.primary,.btn.primary{background:linear-gradient(180deg,#ff3b4d,var(--red));border-color:rgba(255,255,255,.18);
-  box-shadow:0 8px 24px var(--red-glow),inset 0 1px 0 rgba(255,255,255,.35)}
+/* Player HUD pills (the .act glow animation is left untouched) */
+.pb{background:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.02)),rgba(14,18,27,.72);
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  box-shadow:0 3px 10px rgba(0,0,0,.55),inset 0 0 12px rgba(255,255,255,.07)}
+
+/* Primary buttons: red. .alt and .dis keep their own look. */
+.big:not(.alt):not(.dis){background:linear-gradient(#ff4457,#c4121f);color:#fff;border:1px solid rgba(255,255,255,.18);
+  box-shadow:0 8px 22px var(--red-glow),0 3px 0 #7a0b14,inset 0 1px 0 rgba(255,255,255,.35)}
+.big.alt{border:1px solid var(--glass-edge);box-shadow:0 6px 16px rgba(0,0,0,.5),0 3px 0 #0a0d13,inset 0 1px 0 rgba(255,255,255,.1)}
+
+/* Micro-interactions */
+.big,.sm,.seat button,.mic,.chips b,.pcard,.rxg b,.rxp b,.th,.sa{
+  transition:transform .18s var(--ease),box-shadow .18s var(--ease),border-color .18s var(--ease),filter .18s;touch-action:manipulation}
 @media (hover:hover){
-  button:hover,.btn:hover{transform:scale(1.05);box-shadow:0 10px 26px rgba(0,0,0,.55),0 0 18px var(--red-glow)}
+  .big:not(:disabled):hover,.sm:hover,.seat button:hover,.mic:hover,.chips b:hover,.pcard:hover,.rxg b:hover,.rxp b:hover,.th:hover{transform:scale(1.05);filter:brightness(1.1)}
 }
-button:active,.btn:active{transform:scale(.95);box-shadow:0 3px 10px rgba(0,0,0,.5)}
-button.active,.btn.active,button[aria-pressed="true"]{border-color:var(--red);
-  box-shadow:0 0 0 1px var(--red),0 0 20px var(--red-glow),inset 0 0 14px rgba(225,29,46,.25)}
-button:focus-visible{outline:2px solid var(--red);outline-offset:3px}
-button:disabled{opacity:.45;transform:none;box-shadow:none}
-@media (prefers-reduced-motion:reduce){button,.btn{transition:none}}
+.big:active,.sm:active,.seat button:active,.mic:active,.chips b:active,.pcard:active,.rxg b:active,.rxp b:active,.th:active,.sa:active{transform:scale(.95)}
+.sm.on,.chips b.on,.th.on,.mic.on{box-shadow:0 0 0 1px var(--ac),0 0 16px var(--red-glow),inset 0 0 12px rgba(225,29,46,.2)}
+.big:focus-visible,.sm:focus-visible,.chips b:focus-visible{outline:2px solid var(--ac);outline-offset:3px}
+@media (prefers-reduced-motion:reduce){.big,.sm,.seat button,.mic,.chips b,.pcard,.th{transition:none}}

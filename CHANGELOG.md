@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.4
+- UI layer: glass panels, red accents, scale micro-interactions (ux-layer.css)
+- Voice: Google STUN merged into every peer connection, explicit play() with tap-to-resume (sd-voice.js)
+- SDLayout strict double/successor policy added as a module (sd-layout.js, not wired into the engine yet)
+- Cloudflare Pages: deploy from www + pages, Wrangler 4
+
 ## 1.2.2
 - Rule: a double is always perpendicular to the line and the stone attached to it always continues crosswise (straight), also at the
   table edge, in all four directions. The board first zooms/pads gently (down to 0.70, then 0.65 with a look-ahead turn of the stone

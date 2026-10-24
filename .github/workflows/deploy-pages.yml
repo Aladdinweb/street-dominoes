@@ -18,15 +18,16 @@ jobs:
       deployments: write
     steps:
       - uses: actions/checkout@v4
-      - name: Stage static site
+      - name: Stage static site (www is the source of truth)
         run: |
           mkdir -p dist
-          cp -r app/src/main/assets/www/. dist/
-          cp -r pages/. dist/          # _headers, manifest.webmanifest, icons
+          cp -r pages/. dist/                     # _headers, manifest, icons
+          cp -r app/src/main/assets/www/. dist/   # game files win over any mirrored copy
           test -f dist/index.html
       - name: Deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '4'
           command: pages deploy dist --project-name=street-dominoes --branch=${{ github.ref_name }}
