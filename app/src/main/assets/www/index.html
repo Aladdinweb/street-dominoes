@@ -420,7 +420,18 @@ const tp=d<2?f-o:f+o-S,lf=nd===2?lc+S/2-L:lc-S/2;return{r:{x:lf,y:tp,w:L,h:S},lc
 const room=(nd,f,lc)=>{let n=0;const pos=nd<2,hz=nd%2===0,lim=hz?W:H;for(let k=0;k<6;k++){const a0=pos?f-o:f+o-L,r=hz?{x:a0,y:lc-S/2,w:L,h:S}:{x:lc-S/2,y:a0,w:S,h:L},e=pos?a0+L:a0;if(!(pos?e<=lim-m-(S-o):e>=m+(S-o))||hit(r))break;n++;f=e}return n};
 /* room for one more straight stone: the successor of a double must be able to follow crosswise */
 const fit1=(d,f,lc)=>{const pos=d<2,hz=d%2===0,lim=hz?W:H,a0=pos?f-o:f+o-L,r=hz?{x:a0,y:lc-S/2,w:L,h:S}:{x:lc-S/2,y:a0,w:S,h:L},e=pos?a0+L:a0;return(pos?e<=lim-m-(S-o):e>=m+(S-o))&&inside(r)&&!hit(r)};
-const walk=(seq,f,lc,d)=>{last=out[0];if(strict&&last.dbl&&!fit1(d,f,lc))ok=false;
+const walk=(seq,f,lc,d)=>{
+/* rigid-run look-ahead: after a double, its successor (and a double itself) can never turn. From a stone that may still turn, check the whole rigid run
+   up to the next free turn point fits straight; if not, turn THIS stone early instead of pivoting beside a double */
+const runFits=(kq,d,ff,lc)=>{const tmp=[];let pd=false;
+for(let j=kq+1;j<seq.length;j++){const s=seq[j];if(!s.d&&!pd)return true;
+const hz=d%2===0,pos=d<2,len=s.d?S:L,th=s.d?L:S,a0=pos?ff-o:ff+o-len,e2=pos?a0+len:a0,lim=hz?W:H,
+r=hz?{x:a0,y:lc-th/2,w:len,h:th}:{x:lc-th/2,y:a0,w:th,h:len},fits=pos?e2<=lim-m-(S-o):e2>=m+(S-o);
+if(!(fits&&inside(r)&&!hit(r)&&!tmp.some(z=>ov(r,z,2))))return false;tmp.push(r);ff=e2;pd=s.d}
+if(pd){const hz=d%2===0,pos=d<2,lim=hz?W:H,a0=pos?ff-o:ff+o-L,e2=pos?a0+L:a0,r=hz?{x:a0,y:lc-S/2,w:L,h:S}:{x:lc-S/2,y:a0,w:S,h:L};
+if(!((pos?e2<=lim-m-(S-o):e2>=m+(S-o))&&inside(r)&&!hit(r)&&!tmp.some(z=>ov(r,z,2))))return false}
+return true};
+last=out[0];if(strict&&last.dbl&&!fit1(d,f,lc))ok=false;
 for(let kq=0;kq<seq.length;kq++){const q=seq[kq],nxt=seq[kq+1];
 const hz=d%2===0,pos=d<2,len=q.d?S:L,th=q.d?L:S,a0=pos?f-o:f+o-len,e=pos?a0+len:a0;
 const r=hz?{x:a0,y:lc-th/2,w:len,h:th}:{x:lc-th/2,y:a0,w:th,h:len},lim=hz?W:H,fits=pos?e<=lim-m-(S-o):e>=m+(S-o),
@@ -429,8 +440,7 @@ if(strict&&last.dbl&&!straight)ok=false;   /* never pivot on a double: ask for m
 /* look-ahead (second strategy, only when a gentle zoom was not enough): if the NEXT stone is a double and double + crosswise successor would not fit,
    turn THIS stone instead, so the double and its successor lie on a fresh straight leg */
 let early=false;
-if(strict&&look&&straight&&!q.d&&nxt&&nxt.d&&!last.dbl){const a1=pos?e-o:e+o-S,e1=pos?a1+S:a1,r1=hz?{x:a1,y:lc-L/2,w:S,h:L}:{x:lc-L/2,y:a1,w:L,h:S},f1=pos?e1<=lim-m-(S-o):e1>=m+(S-o);
- if(!(f1&&inside(r1)&&!hit(r1)&&fit1(d,e1,lc)))early=true}
+if(strict&&look&&straight&&!q.d&&nxt&&nxt.d&&!last.dbl){if(!runFits(kq,d,e,lc))early=true}
 if(straight&&!early){put(q,r,d,hz===!!q.d);f=e;if(strict&&q.d&&!fit1(d,f,lc))ok=false;continue}
 let best=null;
 for(const nd of [(d+1)%4,(d+3)%4]){const c2=corner(d,nd,f,lc),v=bnd(c2.r)&&!hit(c2.r),rm=v?room(nd,c2.f,c2.lc):-1;if(!best||rm>best.rm)best={nd,c2,rm}}
@@ -443,7 +453,7 @@ walk(chain.slice(0,ci).reverse().map((q,k)=>({p:q.b,q:q.a,d:q.a===q.b,idx:ci-1-k
 return{out,ok,turns}}
 const layout=(W,H)=>layoutTry(W,H).out;
 function layoutFit(CW,CH,start){const k0=Math.max(0,ZL.indexOf(start||1));let r=null;
-for(const [strict,look,kmax] of[[true,false,ZL.indexOf(STRICT_MIN[0])+1],[true,true,ZL.indexOf(STRICT_MIN[1])+1],[false,false,ZL.length]]){let fo=null;
+for(const [strict,look,kmax] of[[true,false,ZL.indexOf(STRICT_MIN[0])+1],[true,true,ZL.indexOf(STRICT_MIN[1])+1],[true,true,ZL.length],[false,false,ZL.length]]){let fo=null;
 for(let k=k0;k<kmax;k++){r=layoutTry(CW/ZL[k],CH/ZL[k],strict,look);const it={out:r.out,s:ZL[k],ok:r.ok,turns:r.turns,strict,look};if(r.ok&&!fo)fo=it;if(r.ok&&r.turns<=MT[k])return it}
 if(fo)return fo}
 return{out:r.out,s:ZL[ZL.length-1],ok:false,turns:r.turns,strict:false,look:false}}

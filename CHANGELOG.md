@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.5
+- Layout: strict double rule now runs down to the 0.55 zoom floor before any fallback turn
+- Layout: rigid-run look-ahead (double, its successor, next double...) turns an earlier free stone instead of pivoting beside a double
+
 ## 1.2.4
 - UI layer: glass panels, red accents, scale micro-interactions (ux-layer.css)
 - Voice: Google STUN merged into every peer connection, explicit play() with tap-to-resume (sd-voice.js)
