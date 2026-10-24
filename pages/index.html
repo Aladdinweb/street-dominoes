@@ -222,6 +222,10 @@ const T9={en:{openT:'You start — pick your opening stone',vcT:'Voice chat',vcD
 fr:{openT:'À vous de commencer — choisissez votre pierre d’ouverture',vcT:'Chat vocal',vcDenied:'L’accès au micro a été refusé. Autorisez-le dans les réglages du téléphone pour parler à la table.',vcNA:'Le chat vocal n’est pas pris en charge sur cet appareil.',vcOnly:'Le chat vocal fonctionne dans les salons en ligne.'},
 ar:{openT:'أنت تبدأ — اختر قطعة الافتتاح',vcT:'الدردشة الصوتية',vcDenied:'تم رفض الوصول إلى الميكروفون. اسمح به من إعدادات الهاتف لتتحدث مع الطاولة.',vcNA:'الدردشة الصوتية غير مدعومة على هذا الجهاز.',vcOnly:'الدردشة الصوتية تعمل في الغرف عبر الإنترنت.'}};
 for(const k in T9)Object.assign(T[k],T9[k]);
+const TA={en:{invCopy:'Copy Invite Link',invShare:'Share',invCopied:'✔ Link copied',invMsg:'Join my Street Dominoes room',invJoin:'Join room',invName:'Your name',invGo:'Join'},
+fr:{invCopy:'Copier le lien d’invitation',invShare:'Partager',invCopied:'✔ Lien copié',invMsg:'Rejoins mon salon Street Dominoes',invJoin:'Rejoindre le salon',invName:'Votre nom',invGo:'Rejoindre'},
+ar:{invCopy:'نسخ رابط الدعوة',invShare:'مشاركة',invCopied:'✔ تم نسخ الرابط',invMsg:'انضم إلى غرفتي في Street Dominoes',invJoin:'الانضمام إلى الغرفة',invName:'اسمك',invGo:'انضمام'}};
+for(const k in TA)Object.assign(T[k],TA[k]);
 const TXN={en:['Classic Green Felt','Dark Modern Wood','Royal Red Velvet','Deep Blue Slate','Marble Luxury'],fr:['Feutre vert classique','Bois moderne sombre','Velours rouge royal','Ardoise bleu profond','Marbre luxe'],ar:['لبّاد أخضر كلاسيكي','خشب عصري داكن','مخمل أحمر ملكي','أردواز أزرق عميق','رخام فاخر']};
 const AV=['😎','🦁','🐯','🦊','🐼','🦅','🐉','👑','🎩','🤠','🧔','🥷'];
 const LG=['en','fr','ar'],LN=['EN','FR','عربي'],COL=['#e5484d','#2fb36d','#f2b705','#3e7bfa'];
@@ -499,10 +503,20 @@ net.recon=true;rcBanner();clearTimeout(net.rct);net.rct=setTimeout(()=>{if(net.o
 function rcBanner(){const b=$('rcb'),x=t();let h='';if(net.recon)h='⏳ '+x.oReconn;else if(net.off&&net.off.length&&inGame&&over<0){const o=net.off[0];h='⏳ '+nm(o.p)+' '+x.oOff+' ('+o.s+'s)'}b.hidden=!h;b.textContent=h}
 function onlinePanel(){const x=t(),ol=net.ol;
 if(net.client&&net.oph==='queue')return`<div class="lanb">🔎 ${x.oSearch} (${net.qn||1}/${net.qneed||2})</div><button class="big alt" id="ox">${x.oCancel}</button>`;
-if(net.client&&ol)return`<div class="lanb"><div class="rcode">${esc(ol.room)}</div>${x.oWait} (${ol.seats.filter(Boolean).length}/${ol.seats.length})<br>${ol.seats.map(s=>s?`${AV[s.a]||'🙂'} ${esc(s.n)}${s.b?' 🤖':''}`:'· · ·').join('<br>')}</div>${ol.host?`<button class="big" id="os">${x.oStart}</button>`:''}<button class="big alt" id="ox">${x.oLeave}</button>`;
+if(net.client&&ol)return`<div class="lanb"><div class="rcode">${esc(ol.room)}</div><div style="display:flex;gap:8px;justify-content:center;margin:8px 0"><button class="sm" id="oshare">🔗 ${x.invCopy}</button>${navigator.share?`<button class="sm" id="oshr">📤 ${x.invShare}</button>`:''}</div>${x.oWait} (${ol.seats.filter(Boolean).length}/${ol.seats.length})<br>${ol.seats.map(s=>s?`${AV[s.a]||'🙂'} ${esc(s.n)}${s.b?' 🤖':''}`:'· · ·').join('<br>')}</div>${ol.host?`<button class="big" id="os">${x.oStart}</button>`:''}<button class="big alt" id="ox">${x.oLeave}</button>`;
 if(net.client)return`<div class="lanb">${x.oConn}</div><button class="big alt" id="ox">${x.oCancel}</button>`;
 return`<button class="big" id="oq">⚡ ${x.oQuick}</button><button class="big alt" id="oc">➕ ${x.oCreate}</button><div class="lanb"><input id="orc" placeholder="${x.oCode}" maxlength="8" value="${esc(net.lastc||'')}"><button class="big" id="oj">${x.oJoin}</button><small>${esc(net.msg||'')}</small></div>`}
-function onlineClick(id){if(!['oq','oc','oj','ox','os'].includes(id))return false;
+/*sd126-invite*/
+const INVITE_BASE='https://street-dominoes.pages.dev/';
+const inviteCode=()=>(net.ol&&net.ol.room)||(net.q&&net.q.room)||'';
+const inviteLink=c=>INVITE_BASE+'?room='+encodeURIComponent(c);
+function copyText(s){const fb=()=>{try{const a=document.createElement('textarea');a.value=s;a.setAttribute('readonly','');a.style.cssText='position:fixed;left:0;top:0;opacity:0';document.body.appendChild(a);a.select();a.setSelectionRange(0,s.length);const ok=document.execCommand('copy');a.remove();return ok}catch(e){return false}};
+return new Promise(res=>{try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(s).then(()=>res(true),()=>res(fb()));return}}catch(e){}res(fb())})}
+function inviteAction(id){const c=inviteCode(),x=t();if(!c)return;const link=inviteLink(c),b=$(id);
+if(id==='oshr'&&navigator.share){navigator.share({title:'Street Dominoes',text:x.invMsg+' '+c,url:link}).catch(()=>{});return}
+copyText(link).then(ok=>{if(ok){if(b){const old=b.textContent;b.textContent=x.invCopied;setTimeout(()=>{if(b.isConnected)b.textContent=old},1600)}}
+else upShow(`<h3>🔗 ${x.invCopy}</h3><input id="invl" readonly value="${esc(link)}" style="width:100%;padding:12px;border-radius:10px;border:2px solid var(--line);background:#0e121b;color:#fff;font-size:15px"><button class="big" id="upx">${x.upOk}</button>`)})}
+function onlineClick(id){if(id==='oshare'||id==='oshr'){inviteAction(id);return true}if(!['oq','oc','oj','ox','os'].includes(id))return false;
 if(id==='oq'){net.oph='queue';net.qn=1;net.qneed=gm==='1v1'?2:4;net.ol=null;net.msg='';onlineConnect({quick:1,gm})}
 else if(id==='oc'){net.oph='room';net.ol=null;net.msg='';onlineConnect({create:1,gm,target})}
 else if(id==='oj'){const c=($('orc').value||'').toUpperCase().replace(/[^A-Z0-9]/g,'');if(!c)return true;net.lastc=c;net.oph='room';net.ol=null;net.msg='';onlineConnect({room:c})}
@@ -682,6 +696,17 @@ $('nt').onclick=e=>{const b=e.target.closest('b');if(b)setMode(+b.dataset.nm)};
 $('lan').onclick=e=>{if(onlineClick(e.target.id))return;if(e.target.id==='jc'){const ip=$('hip').value.trim();if(!ip)return;net.last=ip;net.msg='\u2026';net.myname=(names[0]||'').trim()||'Player';net.bk={names:[...names],avs:[...avs]};net.client=true;Native.connect('ws://'+ip+':'+net.port);render()}};
 $('upp').onclick=e=>{const kb=e.target.closest('[data-k]');if(kb){sendRx(kb.dataset.k);$('up').hidden=true;return}const id=e.target.id;if(id==='upx')$('up').hidden=true;else if(id==='s11'||id==='s22'){$('up').hidden=true;gm=id==='s11'?'1v1':'2v2';seat=gm==='1v1'?[1,0,2,0]:[1,2,2,2];stake=0;newMatch();startRound()}else if(id==='spp'){$('up').hidden=true;gm='1v1';stake=0;seat=[1,0,1,0];if(/^Player \d$/.test(names[2]))names[2]='Player 2';newMatch();startRound()}else if(id==='qy'){$('up').hidden=true;toMenu()}else if(id==='qn')$('up').hidden=true;else if(id==='upgo'){const u=e.target.dataset.u;$('upp').innerHTML=`<h3>${t().upDl}</h3><h2 id="upb">0%</h2>`;Native.installUpdate(u)}};
 applyTheme();render();setTimeout(syncProfile,600);
+/*sd126-boot*/
+(function(){let c='';try{c=(new URLSearchParams(location.search).get('room')||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8)}catch(e){}
+if(!c)return;
+try{history.replaceState(null,'',location.pathname+location.hash)}catch(e){}
+const go=()=>{inMenu=false;setMode(3);net.lastc=c;net.oph='room';net.ol=null;net.msg='';onlineConnect({room:c});render()};
+const n=(names[0]||'').trim();
+if(n&&!/^Player \d$/.test(n)){go();return}
+const guest='Guest '+(1000+Math.floor(Math.random()*9000)),x=t();
+upShow(`<h3>🎲 ${x.invJoin} <b>${esc(c)}</b></h3><label style="display:block;margin:8px 0;color:var(--mu)">${x.invName}</label><input id="gn" maxlength="12" value="${guest}" style="width:100%;padding:12px;border-radius:10px;border:2px solid var(--line);background:#0e121b;color:#fff;font-size:18px;text-align:center"><button class="big" id="gj">${x.invGo}</button>`);
+$('upp').addEventListener('click',function h(e){if(e.target.id!=='gj')return;const v=(($('gn')||{}).value||'').trim().slice(0,12)||guest;names[0]=v;saveSet();$('up').hidden=true;$('upp').removeEventListener('click',h);go()});
+})();
 const spl=$('splash');spl.onclick=()=>spl.classList.add('out');
 setTimeout(()=>{spl.classList.add('out');setTimeout(()=>spl.remove(),700);if(NA)Native.checkUpdate('auto')},2800);
 </script></body></html>

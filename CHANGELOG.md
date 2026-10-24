@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.6
+- Invite links: https://street-dominoes.pages.dev/?room=CODE joins that online room on open
+- Online lobby: Copy Invite Link (and Share where supported)
+- Invite onboarding: quick name prompt with a guest nickname when no profile name is set
+
 ## 1.2.5
 - Layout: strict double rule now runs down to the 0.55 zoom floor before any fallback turn
 - Layout: rigid-run look-ahead (double, its successor, next double...) turns an earlier free stone instead of pivoting beside a double
