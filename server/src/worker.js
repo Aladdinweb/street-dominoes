@@ -1,4 +1,5 @@
-// Street Dominoes - online server (Cloudflare Workers + Durable Objects + KV) - v1.2.0
+// Street Dominoes - online server (Cloudflare Workers + Durable Objects + KV) - v1.3.0
+// v1.3.0: server-recorded online results (rank points, profile stats), leaderboards (GET /api/leaderboard?scope=daily|weekly|global), match stakes in online rooms/quick match
 // WebSocket endpoint:  /ws?room=CODE | /ws?create=1&gm=1v1|2v2&target=100|200|300 | /ws?quick=1&gm=1v1|2v2
 // Common params: pid (stable random player id, used for reconnects), name, av
 // Profile API (KV binding PLAYER_STATS): GET /api/profile?playerId=usr_xxxxxx | POST /api/match-result (one write per finished match)
@@ -19,6 +20,15 @@ function code() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let c = ''; for 
 
 // ---------- Player profiles (Cloudflare KV: PLAYER_STATS) ----------
 export const API = { GAP: 3000, DAY_MAX: 150 };
+// Ranking: only matches the server saw itself change rank points (never the client-posted ones). Starts at 1000.
+export const LB = { WIN: 25, LOSS: -15, BLOCK: 5, BLOCKCAP: 10, MIN: 0, DAY_RATED: 40, MIN_ROUNDS: 2 };
+const STAKES = [0, 100, 500, 1000, 5000];
+export function isoWeek(d) {
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())), n = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - n);
+  const y0 = Date.UTC(t.getUTCFullYear(), 0, 1);
+  return t.getUTCFullYear() + '-W' + String(Math.ceil(((t - y0) / 864e5 + 1) / 7)).padStart(2, '0');
+}
 const AVATARS = ['😎', '🦁', '🐯', '🦊', '🐼', '🦅', '🐉', '👑', '🎩', '🤠', '🧔', '🥷'];
 const TITLES = [[5, 'Street Rookie'], [20, 'Café Player'], [50, 'Table Master'], [100, 'Domino General'], [Infinity, 'Street Legend']];
 export const titleOf = w => TITLES.find(t => w <= t[0])[1];
@@ -30,6 +40,12 @@ const pub = p => { const { lastAt, day, dc, ...rest } = p; return rest; };
 
 async function api(req, env, url) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+  if (url.pathname === '/api/leaderboard' && req.method === 'GET') {
+    if (!env.MATCH) return json({ error: 'lb_not_configured' }, 503);
+    const scope = url.searchParams.get('scope') || 'global', lim = url.searchParams.get('limit') || '50';
+    const r = await env.MATCH.get(env.MATCH.idFromName('lb')).fetch('https://lb.internal/_lb/top?scope=' + encodeURIComponent(scope) + '&limit=' + encodeURIComponent(lim));
+    return new Response(await r.text(), { status: r.status, headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=15', ...CORS } });
+  }
   if (!env.PLAYER_STATS) return json({ error: 'kv_not_configured' }, 503);
   if (url.pathname === '/api/profile' && req.method === 'GET') {
     const id = url.searchParams.get('playerId');
@@ -42,6 +58,10 @@ async function api(req, env, url) {
     if (raw.length > 2048) return json({ error: 'too_large' }, 413);
     let b; try { b = JSON.parse(raw); } catch (e) { return json({ error: 'bad_json' }, 400); }
     if (!b || !validId(b.playerId) || (b.result !== 'win' && b.result !== 'loss')) return json({ error: 'bad_request' }, 400);
+    if (b.mode === 'online') {   // the room already recorded this match (stats + rank); counting the client report again would double it
+      const q = await env.PLAYER_STATS.get('profile:' + b.playerId, 'json');
+      return json({ ok: true, skipped: 'recorded_by_server', profile: pub(q || blank(b.playerId)) });
+    }
     const bw = b.blockedWins === undefined ? 0 : b.blockedWins;
     if (!Number.isInteger(bw) || bw < 0 || bw > 14) return json({ error: 'bad_request' }, 400);
     const key = 'profile:' + b.playerId, now = Date.now();
@@ -85,6 +105,7 @@ export default {
 
 export class GameRoom {
   constructor(state, env) {
+    this.env = env; this.recMid = -1; this.bw = [0, 0, 0, 0]; this.rkres = null;
     this.cfg = null; this.code = ''; this.seats = [null, null, null, null]; this.phase = 'lobby'; this.timers = {};
     this.init();
   }
@@ -115,7 +136,7 @@ export class GameRoom {
     if (!this.cfg) {
       if (!q.get('create') && !q.get('gm')) { this.err(ws, 'noroom'); return res(); }
       this.code = (q.get('room') || '').slice(0, 8);
-      this.cfg = { gm: q.get('gm') === '1v1' ? '1v1' : '2v2', target: [100, 200, 300].includes(+q.get('target')) ? +q.get('target') : 200, fill: q.get('fill') === '1', host: pid };
+      this.cfg = { gm: q.get('gm') === '1v1' ? '1v1' : '2v2', target: [100, 200, 300].includes(+q.get('target')) ? +q.get('target') : 200, fill: q.get('fill') === '1', host: pid, stake: STAKES.includes(+q.get('stake')) ? +q.get('stake') : 0 };
     }
     this.attach(ws, pid, clean(q.get('name'), 12) || 'Player', Math.max(0, Math.min(11, parseInt(q.get('av')) || 0)));
     return res();
@@ -145,7 +166,7 @@ export class GameRoom {
   lobby() {
     const filled = this.act.every(i => this.seats[i]), host = this.hostSeat();
     this.seats.forEach((s, p) => {
-      if (s && s.ws) send(s.ws, { t: 'olobby', room: this.code, gm: this.cfg.gm, target: this.cfg.target, host: p === host, you: p,
+      if (s && s.ws) send(s.ws, { t: 'olobby', room: this.code, gm: this.cfg.gm, target: this.cfg.target, stake: this.cfg.stake | 0, host: p === host, you: p,
         seats: this.act.map(i => { const x = this.seats[i]; return x ? { n: x.name, a: x.av, b: x.bot ? 1 : 0 } : null; }) });
     });
     if (filled) this.after('start', 1500, () => this.startNow()); else this.clear('start');
@@ -224,6 +245,7 @@ export class GameRoom {
       this.over = o; this.wt = wt; this.blocked = false; this.gain = 0; this.fo = p; this.final = true;
       this.phase = 'over'; this.dealing = false; this.fx = null;
       this.broadcast();
+      this.recordMatch();
     } else {
       this.broadcast();
       if (this.phase === 'play' && this.cur === p) this.schedule();
@@ -238,7 +260,7 @@ export class GameRoom {
     this.newMatch();
   }
   newMatch() {
-    this.score = [0, 0]; this.nextStart = null; this.mid++; this.final = false; this.fo = -1;
+    this.score = [0, 0]; this.nextStart = null; this.mid++; this.final = false; this.fo = -1; this.bw = [0, 0, 0, 0]; this.rkres = null;
     this.seats.forEach(s => { if (s) s.rm = s.bot; });
     this.startRound();
   }
@@ -353,9 +375,54 @@ export class GameRoom {
       this.over = this.cur;
     }
     this.blocked = blocked; this.phase = 'over';
+    if (blocked && this.wt >= 0) TP(gm, this.wt).forEach(q => { const s = this.seats[q]; if (s && !s.bot) this.bw[q] = (this.bw[q] || 0) + 1; });
     this.final = this.score[0] >= this.cfg.target || this.score[1] >= this.cfg.target;
     this.broadcast();
+    if (this.final) this.recordMatch();
     if (!this.final) this.after('next', CFG.NEXT, () => this.startRound());
+  }
+
+  // Authoritative result of a finished online match: profile stats always, rank points + leaderboards only for "rated" matches
+  // (>= 2 human players; a 1v1 forfeit only counts after LB.MIN_ROUNDS rounds). Players who forfeited always get the loss.
+  recordMatch() {
+    if (this.recMid === this.mid) return;
+    this.recMid = this.mid;
+    this.doRecord().catch(() => {});
+  }
+  async doRecord() {
+    const env = this.env, gm = this.cfg.gm;
+    if (!env || !env.PLAYER_STATS) return;
+    const mt = this.fo >= 0 ? this.wt : (this.score[0] >= this.score[1] ? 0 : 1);
+    const rows = this.act.map(p => ({ p, s: this.seats[p] })).filter(x => x.s && (!x.s.bot || x.s.fn) && validId(x.s.pid))
+      .map(({ p, s }) => ({ p, s, id: s.pid, win: tm(gm, p) === mt && !s.fn, bw: Math.min(14, this.bw[p] || 0) }));
+    if (!rows.length) return;
+    const rated = rows.length >= 2 && (this.fo < 0 || this.rid >= LB.MIN_ROUNDS);
+    const profs = await Promise.all(rows.map(r => env.PLAYER_STATS.get('profile:' + r.id, 'json')));
+    let res = {};
+    if (rated && env.MATCH) {
+      const entries = rows.map((r, i) => ({ id: r.id, name: clean(r.s.name, 12), avatar: AVATARS[r.s.av] || AVATARS[0], base: (profs[i] && profs[i].rankPoints) || 1000, win: r.win,
+        delta: r.win ? LB.WIN + Math.min(LB.BLOCKCAP, LB.BLOCK * r.bw) : LB.LOSS }));
+      try {
+        const rr = await env.MATCH.get(env.MATCH.idFromName('lb')).fetch('https://lb.internal/_lb/record', { method: 'POST', body: JSON.stringify({ entries }) });
+        if (rr.ok) res = (await rr.json()).res || {};
+      } catch (e) {}
+    }
+    const rk = {};
+    await Promise.all(rows.map(async (r, i) => {
+      const p = profs[i] || blank(r.id), o = res[r.id];
+      p.name = clean(r.s.name, 12) || p.name;
+      p.avatar = AVATARS[r.s.av] || p.avatar;
+      p.totalMatches++;
+      if (r.win) { p.totalWins++; p.winStreak++; } else p.winStreak = 0;
+      p.blockedWins += r.bw;
+      p.winRate = (100 * p.totalWins / p.totalMatches).toFixed(1) + '%';
+      p.title = titleOf(p.totalWins);
+      if (o) p.rankPoints = o.rp;
+      rk[r.p] = { d: o && o.applied ? o.delta : 0, rp: p.rankPoints, rated: !!o };
+      try { await env.PLAYER_STATS.put('profile:' + r.id, JSON.stringify(p)); } catch (e) {}
+    }));
+    this.rkres = rk;
+    this.broadcast();   // send the rank change to the players' result screens
   }
 
   view(p) {
@@ -365,10 +432,10 @@ export class GameRoom {
       seat: [0, 1, 2, 3].map(i => (!act.includes(i) ? 0 : this.seats[i] && this.seats[i].bot ? 2 : i === p ? 1 : 3)),
       names: [0, 1, 2, 3].map(i => { const s = this.seats[i]; return s && (!s.bot || s.fn) ? s.name : 'Player ' + (i + 1); }),
       avs: [0, 1, 2, 3].map(i => (this.seats[i] ? this.seats[i].av : i)),
-      wt: this.wt, gm: this.cfg.gm, stake: 0, mid: this.mid, yd: this.yard.map(y => (y ? 1 : 0)), dealing: this.dealing, fx: this.fx,
+      wt: this.wt, gm: this.cfg.gm, stake: this.cfg.stake | 0, mid: this.mid, yd: this.yard.map(y => (y ? 1 : 0)), dealing: this.dealing, fx: this.fx,
       hands: this.hands.map((h, i) => (this.over >= 0 || i === p ? h : h.map(() => 0))),
       chain: this.chain, ci: this.ci, cur: this.cur, ps: this.ps, over: this.over, score: this.score, blocked: this.blocked, gain: this.gain,
-      target: this.cfg.target, rid: this.rid, fo: this.fo,
+      target: this.cfg.target, rid: this.rid, fo: this.fo, rk: this.rkres && this.rkres[p] ? this.rkres[p] : null,
       off: this.seats.map((s, i) => (s && !s.bot && s.off ? { p: i, s: Math.max(0, Math.ceil((s.off - now) / 1000)) } : null)).filter(Boolean),
     };
   }
@@ -395,12 +462,14 @@ export class GameRoom {
 }
 
 export class Matchmaker {
-  constructor(state, env) { this.q = []; this.iv = null; }
+  constructor(state, env) { this.state = state; this.q = []; this.iv = null; }
   async fetch(req) {
+    const lbu = new URL(req.url);
+    if (lbu.pathname.startsWith('/_lb/')) return this.lbFetch(req, lbu);   // leaderboard store: a separate instance of this class, reached only from inside the Worker
     const q = new URL(req.url).searchParams;
     const pair = new WebSocketPair(), client = pair[0], ws = pair[1];
     ws.accept();
-    const e = { ws, gm: q.get('gm') === '1v1' ? '1v1' : '2v2', since: Date.now() };
+    const e = { ws, gm: q.get('gm') === '1v1' ? '1v1' : '2v2', stake: STAKES.includes(+q.get('stake')) ? +q.get('stake') : 0, since: Date.now() };
     this.q.push(e);
     const drop = () => { this.q = this.q.filter(x => x !== e); this.idle(); };
     ws.addEventListener('close', drop);
@@ -410,20 +479,72 @@ export class Matchmaker {
     this.tick();
     return new Response(null, { status: 101, webSocket: client });
   }
+  // ---- leaderboard store (instance idFromName('lb') of this class). Plain Durable Object storage, so no wrangler.toml change is needed.
+  async lbLoad() {
+    if (!this.lbReady) this.lbReady = (async () => {
+      this.lb = new Map();
+      const all = await this.state.storage.list({ prefix: 'p:' });
+      for (const [k, v] of all) this.lb.set(k.slice(2), v);
+    })();
+    return this.lbReady;
+  }
+  async lbFetch(req, u) {
+    const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
+    if (!this.state || !this.state.storage) return J({ error: 'lb_unavailable' }, 503);
+    await this.lbLoad();
+    const now = new Date(), dk = now.toISOString().slice(0, 10), wk = isoWeek(now);
+    if (u.pathname === '/_lb/record' && req.method === 'POST') {
+      let b; try { b = await req.json(); } catch (e) { return J({ error: 'bad_json' }, 400); }
+      const list = Array.isArray(b && b.entries) ? b.entries.slice(0, 4) : [], out = {}, batch = {};
+      for (const e of list) {
+        if (!e || !validId(e.id)) continue;
+        let r = this.lb.get(e.id);
+        if (!r) r = { id: e.id, rp: Math.max(LB.MIN, Math.min(100000, (e.base | 0) || 1000)), w: 0, m: 0, dk: '', dp: 0, dw: 0, dn: 0, wk: '', wp: 0, ww: 0 };
+        if (r.dk !== dk) { r.dk = dk; r.dp = 0; r.dw = 0; r.dn = 0; }
+        if (r.wk !== wk) { r.wk = wk; r.wp = 0; r.ww = 0; }
+        const applied = r.dn < LB.DAY_RATED, delta = applied ? Math.max(-50, Math.min(60, e.delta | 0)) : 0;
+        r.name = clean(e.name, 12) || r.name || 'Player';
+        r.avatar = AVATARS.includes(e.avatar) ? e.avatar : r.avatar || AVATARS[0];
+        r.m++; r.dn++;
+        if (applied) { r.rp = Math.max(LB.MIN, r.rp + delta); r.dp += delta; r.wp += delta; if (e.win) { r.w++; r.dw++; r.ww++; } }
+        this.lb.set(e.id, r); batch['p:' + e.id] = r; out[e.id] = { rp: r.rp, applied, delta };
+      }
+      if (Object.keys(batch).length) await this.state.storage.put(batch);
+      this.lbCache = {};
+      return J({ ok: true, res: out });
+    }
+    if (u.pathname === '/_lb/top') {
+      const scope = u.searchParams.get('scope'), lim = Math.max(1, Math.min(100, parseInt(u.searchParams.get('limit')) || 50));
+      if (!['daily', 'weekly', 'global'].includes(scope)) return J({ error: 'bad_scope' }, 400);
+      const ck = scope + lim, c = this.lbCache && this.lbCache[ck];
+      if (c && Date.now() - c.t < 15000) return J(c.v);
+      const all = [...this.lb.values()], row = (r, rp, w) => ({ playerId: r.id, name: r.name, avatar: r.avatar, rankPoints: rp, wins: w, matches: r.m });
+      let rows;
+      if (scope === 'global') rows = all.filter(r => r.m > 0).sort((a, b) => b.rp - a.rp || b.w - a.w).map(r => row(r, r.rp, r.w));
+      else {
+        const [kd, kp, kw, kv] = scope === 'daily' ? ['dk', 'dp', 'dw', dk] : ['wk', 'wp', 'ww', wk];
+        rows = all.filter(r => r[kd] === kv && (r[kw] > 0 || r[kp] > 0)).sort((a, b) => b[kp] - a[kp] || b[kw] - a[kw]).map(r => row(r, Math.max(0, r[kp]), r[kw]));
+      }
+      const v = { scope, entries: rows.slice(0, lim), updated: Date.now() };
+      (this.lbCache = this.lbCache || {})[ck] = { t: Date.now(), v };
+      return J(v);
+    }
+    return J({ error: 'not_found' }, 404);
+  }
   idle() { if (!this.q.length && this.iv) { clearInterval(this.iv); this.iv = null; } }
   tick() {
-    for (const gm of ['1v1', '2v2']) {
-      const need = gm === '1v1' ? 2 : 4, l = this.q.filter(e => e.gm === gm);
-      if (l.length >= need) this.match(l.slice(0, need), gm, false);
-      else if (l.length && Date.now() - l[0].since >= CFG.QFILL) this.match(l, gm, true);   // fill the table with bots
+    for (const gm of ['1v1', '2v2']) for (const st of STAKES) {   // players are only matched with others who chose the same entry fee
+      const need = gm === '1v1' ? 2 : 4, l = this.q.filter(e => e.gm === gm && e.stake === st);
+      if (l.length >= need) this.match(l.slice(0, need), gm, false, st);
+      else if (l.length && Date.now() - l[0].since >= CFG.QFILL) this.match(l, gm, true, st);   // fill the table with bots
       else l.forEach(e => send(e.ws, { t: 'queue', n: l.length, need }));
     }
   }
-  match(grp, gm, fill) {
+  match(grp, gm, fill, stake = 0) {
     const room = code();
     grp.forEach(e => {
       this.q = this.q.filter(x => x !== e);
-      send(e.ws, { t: 'matched', room, gm, fill: fill ? 1 : 0 });
+      send(e.ws, { t: 'matched', room, gm, fill: fill ? 1 : 0, stake });
       try { e.ws.close(1000, 'matched'); } catch (x) {}
     });
     this.idle();

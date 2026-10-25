@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.0
+- Server: online results recorded by the room (rank points, profile stats), GET /api/leaderboard (daily / weekly / global), stakes in online rooms and quick match
+- Client: online entry-fee picker, rank change on the result screen, Global leaderboard tab by default, Friends reject unknown IDs
+- Docs: ROADMAP.md, STATE.md sections 12-14, server regression tests (node server/test/worker.test.mjs)
+
 ## 1.2.9
 - Profile: emoji grid removed (street avatars + photo upload); 4 exclusive avatars from the Daily Box
 - Android: native photo picker for the profile photo (MainActivity.kt)

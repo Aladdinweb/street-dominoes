@@ -1,4 +1,6 @@
-# Street Dominoes - project state (v1.2.9)
+# Street Dominoes - project state (v1.3.0)
+
+> Long-term plan and phases: see [ROADMAP.md](ROADMAP.md). Update both files when a feature ships.
 
 by ILINE TECH / FERAK ALADDIN. Android app (WebView + Kotlin) + Cloudflare Worker backend. Everything below describes what is in this repo now.
 
@@ -72,4 +74,26 @@ WebRTC audio is peer-to-peer; the room only relays signalling (`vc`, `rtc`). Low
 3. Keep `release.jks` + password backed up (updates only install over builds signed with the same key).
 
 ## 11. Roadmap
+Superseded by [ROADMAP.md](ROADMAP.md) (phases 1-5).
 1.3.0 leaderboards + Elo (+25/+10/+5 blocked bonus/-15), weekly coins board; 1.4.0 themes hub (table, tile skins, material audio); 1.5.0 street audio emotes and animated emojis; optional TURN for voice.
+
+<!-- sd130 -->
+## 12. Changes since v1.2.2 (client)
+- 1.2.3-1.2.4: `ux-layer.css` (glass panels, dark charcoal + red accents, scale micro-interactions); Cloudflare Pages deploy (`.github/workflows/deploy-pages.yml`, project `street-dominoes`, https://street-dominoes.pages.dev; `pages/` holds `_headers`, manifest and mirrored copies, `app/src/main/assets/www/` wins); `sd-voice.js` (Google STUN merged into every RTCPeerConnection + explicit `play()` with tap-to-resume); `sd-layout.js` (`SDLayout` module, NOT used by the engine).
+- 1.2.5 / 1.2.8: layout engine `layoutTry0` / `layoutTry` / `layoutFit`: strict double rule down to zoom 0.45, rigid-run look-ahead, start-point search (`SHIFTS`); the non-strict "turn after a double" fallback remains as a last resort (< 1% of moves in tests).
+- 1.2.6: invite links (`?room=CODE` auto-join, Copy Invite Link in the lobby, guest-name prompt).
+- 1.2.7: profile photo (250x250 JPEG in `dm_photo`), 12 procedural street avatars, country flag picker (`IL` excluded), active-turn pulse (CSS), localized Pass voice (`PassVoice`, device TTS), default name "Player 1".
+- 1.2.9: menu card + wallet, glowing top-centre title, Daily Mystery Box (24 h, coins / XP / 4 exclusive avatars), XP levels (`dm_eco`), leaderboard window (Daily / Weekly / Friends / Global), solo entry fee, native photo picker (`MainActivity.kt`: `onShowFileChooser`, `Native.supportsFilePicker()`).
+- Local storage keys: `dm_set` (settings, names, coins, stats snapshot), `dm_pid`, `dm_pend`, `dm_lang`, `dm_prof2` (avatar kind, flag), `dm_photo`, `dm_eco` (XP, box timer, owned avatars, solo fee), `dm_friends`.
+- Limits: coins, XP and the box timer are client-side (forgeable); photo, flag and street avatars are local only (the server accepts emoji avatars only).
+
+## 13. Server v1.3.0: ranking, leaderboards, stakes
+- Online results are recorded by the room itself at match end (`GameRoom.recordMatch`): profile stats for every human, rank points only for "rated" matches (>= 2 humans; 1v1 forfeit only after 2 rounds; forfeiters always lose; max 40 rated per player per day). Constants: `LB` in `worker.js`. `POST /api/match-result` with `mode:"online"` is acknowledged but ignored.
+- Leaderboard store: instance `idFromName('lb')` of the `Matchmaker` class, internal paths `/_lb/record` and `/_lb/top` (not reachable from outside). Public API: `GET /api/leaderboard?scope=daily|weekly|global&limit=50`.
+- Stakes: `stake` (0 / 100 / 500 / 1000 / 5000) is set by the room creator or the first quick-match connector and sent in `olobby` and `state`; quick match queues are per stake; the client deducts the fee when a new `mid` starts and pays the winning team the pot at the end (coins live on the devices).
+- Tests: `node server/test/worker.test.mjs` (real room code, fake KV / Durable Object storage).
+
+## 14. Working on this repo
+- Features ship as `apply-vX.Y.Z.sh` patch scripts: exact-match anchors (abort unless exactly one match), syntax checks with automatic restore, idempotent, version bump, changelog, commit, push, tag. Scripts use `$TMPDIR` (Termux has no `/tmp`).
+- Tag `vX.Y.Z` builds the APK; a push to `main` redeploys the web build; a push under `server/` redeploys the Worker. Kotlin changes are only compiled by the GitHub Actions APK build.
+- Long-term plan: `ROADMAP.md`.
