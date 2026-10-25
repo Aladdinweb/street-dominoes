@@ -230,6 +230,10 @@ const TB={en:{pfPhoto:'Photo',pfUpload:'Upload photo',pfRemove:'Remove photo',pf
 fr:{pfPhoto:'Photo',pfUpload:'Importer une photo',pfRemove:'Supprimer la photo',pfStreet:'Avatars de rue',pfCountry:'Pays / drapeau',pfNone:'Aucun drapeau',pfPhotoErr:'Impossible d’utiliser cette photo. Essayez une image plus petite ou différente.'},
 ar:{pfPhoto:'صورة',pfUpload:'رفع صورة',pfRemove:'حذف الصورة',pfStreet:'أفاتار الشارع',pfCountry:'الدولة / العلم',pfNone:'بدون علم',pfPhotoErr:'تعذّر استخدام هذه الصورة. جرّب صورة أصغر أو مختلفة.'}};
 for(const k in TB)Object.assign(T[k],TB[k]);
+const TZ={en:{coinsL:'Coins',xpL:'XP',lvlL:'Level',rkL:'Rank',mBox:'Daily Box',mBoxReady:'Open now!',mBoxIn:'Next box in',mLb:'Leaderboard',lbDaily:'Daily',lbWeekly:'Weekly',lbFriends:'Friends',lbGlobal:'Global',lbYou:'You',lbNoSrv:'Online rankings are not enabled on the server yet.',lbLoad:'Loading…',lbAddPh:'Friend ID (usr_…)',lbAdd:'Add',lbNF:'Player not found',lbMyId:'My ID',lbCopy:'Copy',lbNoFr:'No friends yet. Share your ID or add theirs.',lbCopied:'Copied',boxTitle:'Mystery Box',boxTap:'Tap the box to open it',boxCome:'Come back in',boxWon:'You won',boxCoins:'Coins',boxXp:'XP',boxVip:'Exclusive avatar',boxDup:'Collection complete: bonus coins',vipLock:'Exclusive avatar. Win it in the Daily Box.',ssT:'Entry fee',ssFree:'Casual (free)'},
+fr:{coinsL:'Pièces',xpL:'XP',lvlL:'Niveau',rkL:'Rang',mBox:'Coffre quotidien',mBoxReady:'Ouvrir !',mBoxIn:'Prochain coffre dans',mLb:'Classement',lbDaily:'Jour',lbWeekly:'Semaine',lbFriends:'Amis',lbGlobal:'Monde',lbYou:'Vous',lbNoSrv:'Les classements en ligne ne sont pas encore activés sur le serveur.',lbLoad:'Chargement…',lbAddPh:'ID ami (usr_…)',lbAdd:'Ajouter',lbNF:'Joueur introuvable',lbMyId:'Mon ID',lbCopy:'Copier',lbNoFr:'Pas encore d’amis. Partagez votre ID ou ajoutez le leur.',lbCopied:'Copié',boxTitle:'Coffre mystère',boxTap:'Touchez le coffre pour l’ouvrir',boxCome:'Revenez dans',boxWon:'Vous gagnez',boxCoins:'Pièces',boxXp:'XP',boxVip:'Avatar exclusif',boxDup:'Collection complète : pièces bonus',vipLock:'Avatar exclusif. Gagnez-le dans le coffre quotidien.',ssT:'Mise d’entrée',ssFree:'Amical (gratuit)'},
+ar:{coinsL:'العملات',xpL:'الخبرة',lvlL:'المستوى',rkL:'الترتيب',mBox:'الصندوق اليومي',mBoxReady:'افتحه الآن!',mBoxIn:'الصندوق التالي بعد',mLb:'لوحة المتصدرين',lbDaily:'يومي',lbWeekly:'أسبوعي',lbFriends:'الأصدقاء',lbGlobal:'عالمي',lbYou:'أنت',lbNoSrv:'الترتيب عبر الإنترنت غير مفعّل على الخادم بعد.',lbLoad:'جارٍ التحميل…',lbAddPh:'معرّف الصديق (usr_…)',lbAdd:'إضافة',lbNF:'اللاعب غير موجود',lbMyId:'معرّفي',lbCopy:'نسخ',lbNoFr:'لا أصدقاء بعد. شارك معرّفك أو أضف معرّفهم.',lbCopied:'تم النسخ',boxTitle:'صندوق الغموض',boxTap:'المس الصندوق لفتحه',boxCome:'عُد بعد',boxWon:'ربحت',boxCoins:'عملات',boxXp:'خبرة',boxVip:'أفاتار حصري',boxDup:'اكتملت المجموعة: عملات إضافية',vipLock:'أفاتار حصري. اربحه من الصندوق اليومي.',ssT:'رسوم الدخول',ssFree:'ودّي (مجاني)'}};
+for(const k in TZ)Object.assign(T[k],TZ[k]);
 const TXN={en:['Classic Green Felt','Dark Modern Wood','Royal Red Velvet','Deep Blue Slate','Marble Luxury'],fr:['Feutre vert classique','Bois moderne sombre','Velours rouge royal','Ardoise bleu profond','Marbre luxe'],ar:['لبّاد أخضر كلاسيكي','خشب عصري داكن','مخمل أحمر ملكي','أردواز أزرق عميق','رخام فاخر']};
 const AV=['😎','🦁','🐯','🦊','🐼','🦅','🐉','👑','🎩','🤠','🧔','🥷'];
 const LG=['en','fr','ar'],LN=['EN','FR','عربي'],COL=['#e5484d','#2fb36d','#f2b705','#3e7bfa'];
@@ -344,7 +348,7 @@ $('ov').hidden=false;snd.lock();clearTimeout(bkTm);bkTm=setTimeout(bkNext,6500)}
 function bkNext(){clearTimeout(bkTm);if($('ov').hidden)return;$('ov').hidden=true;VictoryOverlay()}
 function VictoryOverlay(){const x=t(),ms=score[0]>=target||score[1]>=target,mt=score[0]>=score[1]?0:1;let pay='';
 {const me2=seat.indexOf(1),key=rkey();if(statKey!==key){statKey=key;stats.rp++;if(wt>=0&&wt===tm(me2)){stats.rw++;if(blocked){stats.bw++;mBlk++}}
-if(ms){stats.mp++;const won=mt===tm(me2);if(won){stats.mw++;stats.ws++}else stats.ws=0;
+if(ms){stats.mp++;const won=mt===tm(me2);ecoXp(won?40:15);if(won){stats.mw++;stats.ws++}else stats.ws=0;
 pend.push({playerId:pid,name:(names[0]||'').trim()||'Player',avatar:AV[avs[0]],result:won?'win':'loss',blockedWins:Math.min(mBlk,14),mode:net.online?'online':(net.client||net.host)?'lan':'solo',gm,target});savePend();mBlk=0;setTimeout(flushPend,400)}
 saveSet()}}
 if(ms&&stake){const me=seat.indexOf(1),win=tm(me)===mt,tot=stake*act.length;if(!settled){settled=true;if(win)coins+=tot/TP(mt).length;saveSet()}pay=`<div class="mw">🪙 ${x.pot}: ${tot.toLocaleString()} — ${win?x.yw+' +'+stake.toLocaleString():x.yl+' −'+stake.toLocaleString()} · ${x.bal}: ${coins.toLocaleString()}</div>`}
@@ -353,7 +357,7 @@ const sparks=Array.from({length:16},(_,i)=>`<i class="sp" style="--a:${i*22.5}de
 $('rs').innerHTML=`<div class="vh"><div class="spk">${sparks}</div><div class="vt">${wt<0?'🤝':'🏆'} ${wt<0?x.drw:`${tw(wt)} ${x.win}`}${blocked?' 🔒 '+x.blocked:''}</div>${wt>=0?`<div class="vp">+<span id="cu1">0</span> ${x.pips}</div>`:''}</div>${ms?`<div class="mw">🏆 ${tw(mt)} ${x.mwin} (${target})</div>`:''}${pay}${card(0)}${card(1)}${net.online?(ms?`<button class="big" data-r="orm">${x.rematch}</button><button class="big alt" data-r="np">${x.newp}</button>`:`<p>${x.nxt}</p>`):net.client?`<p>${x.lWh}</p>`:`<button class="big" data-r="${ms?'re':'go'}">${ms?x.rematch:x.cont}</button><button class="big alt" data-r="np">${x.newp}</button>`}`;
 $('rs').innerHTML+=`<div class="ftm">${CR}</div>`;$('res').hidden=false;snd.win();if(wt>=0)countUp('cu1',gain,900)}
 function toMenu(){dealTok++;dealing=false;$('fx').innerHTML='';$('ov').hidden=true;$('pm').hidden=true;net.end();if(net.host){Native.hostStop();net.host=false;net.conn={}}nmode=0;seat=seat.map(v=>v===3?2:v);inMenu=true;gid++;inGame=false;score=[0,0];nextStart=null;stake=0;$('res').hidden=true;render()}
-function menuUI(){const x=t();$('menu').innerHTML=`<div class="pcard" id="pc"><span class="av2">${avBig()}</span><b>${nm(0)}${prof2.cc?' '+flagEmoji(prof2.cc):''}</b><em class="ttl2">${titleOf(stats.mw,lang)}</em><small>🪙 ${coins.toLocaleString()}${NV?' · v'+NV:''}</small></div><button class="big" data-m="solo">🤖 ${x.mSolo}</button><button class="big alt" data-m="lan">📡 ${x.mLan}</button><button class="big alt" data-m="online">🌐 ${x.mOnline}</button>`}
+/* menuUI: see sd129-eco */
 const HAND='<svg viewBox="0 0 60 70" width="50"><g fill="#e8b48a" stroke="#b9855e" stroke-width="1.5"><rect x="12" y="30" width="34" height="34" rx="12"/><rect x="12" y="8" width="8" height="30" rx="4"/><rect x="22" y="3" width="8" height="35" rx="4"/><rect x="32" y="6" width="8" height="32" rx="4"/><rect x="42" y="14" width="8" height="26" rx="4"/><rect x="2" y="34" width="8" height="22" rx="4" transform="rotate(-25 6 45)"/></g></svg>';
 let dealing=false,dc=[0,0,0,0],jd=false,fxo=null,fxn=0,dealTok=0,dealSkip=false,ppos={};
 const yardLeft=()=>yard.filter(Boolean).length,tm=p=>gm==='1v1'?(p===2?1:0):p%2,TP=k=>gm==='1v1'?[k?2:0]:[k,k+2];
@@ -554,6 +558,89 @@ if(r.ok){pend.shift();if(!pend.length)adopt(r.j.profile)}else if(r.status>=400&&
 tries=0;savePend()}
 syncSt='ok'}catch(e){syncSt='off'}
 savePend();syncBusy=false}
+/*sd129-eco*/
+/* economy state: XP, daily box timer, owned exclusive avatars, solo entry fee. Kept apart from dm_set so the server profile sync is untouched. */
+const ECK='dm_eco',FRK='dm_friends',BOX_MS=864e5,XP_LV=200,VIP_FROM=12,VIP_N=4;
+let eco={boxAt:0,xp:0,vip:[],opened:0,ss:0};
+try{const o=JSON.parse(localStorage.getItem(ECK)||'{}');if(o&&typeof o==='object'){eco.boxAt=+o.boxAt||0;eco.xp=Math.max(0,+o.xp||0);eco.vip=Array.isArray(o.vip)?o.vip.filter(v=>Number.isInteger(v)&&v>=VIP_FROM&&v<VIP_FROM+VIP_N):[];eco.opened=+o.opened||0;eco.ss=[0,100,500,1000,5000].includes(+o.ss)?+o.ss:0}}catch(e){}
+const saveEco=()=>{try{localStorage.setItem(ECK,JSON.stringify(eco))}catch(e){}};
+const ecoLvl=()=>Math.floor(eco.xp/XP_LV)+1;
+function ecoXp(n){eco.xp+=n|0;saveEco()}
+let soloStake=eco.ss;
+const boxReady=()=>Date.now()-eco.boxAt>=BOX_MS;
+const boxLeft=()=>Math.max(0,Math.min(BOX_MS,BOX_MS-(Date.now()-eco.boxAt)));
+const fmtHMS=ms=>{const s=Math.ceil(ms/1000);return[Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(v=>String(v).padStart(2,'0')).join(':')};
+function rnd01(){try{const a=new Uint32Array(1);crypto.getRandomValues(a);return a[0]/4294967296}catch(e){return Math.random()}}
+const BOX_TABLE=[{w:28,t:'c',v:250},{w:22,t:'c',v:500},{w:12,t:'c',v:1000},{w:4,t:'c',v:2500},{w:14,t:'x',v:50},{w:10,t:'x',v:150},{w:6,t:'x',v:300},{w:4,t:'v',v:0}];
+function rollBox(){let r=rnd01()*100,e=BOX_TABLE[0];for(const b of BOX_TABLE){if(r<b.w){e=b;break}r-=b.w}
+if(e.t==='v'){const free=[0,1,2,3].map(k=>VIP_FROM+k).filter(k=>!eco.vip.includes(k));if(!free.length)return{t:'c',v:1500,dup:true};return{t:'v',v:free[Math.floor(rnd01()*free.length)]}}
+return{t:e.t,v:e.v}}
+function applyBox(r){if(r.t==='c'){coins+=r.v;saveSet()}else if(r.t==='x')ecoXp(r.v);else if(r.t==='v'){eco.vip.push(r.v);saveEco()}}
+/* the timer starts BEFORE the animation so closing the app mid-animation cannot be used to re-roll */
+function claimBox(){if(!boxReady())return null;eco.boxAt=Date.now();eco.opened++;const r=rollBox();applyBox(r);saveEco();return r}
+let mbTm=0;
+function mbEl(){let e=document.getElementById('mbx');if(!e){e=document.createElement('div');e.id='mbx';e.hidden=true;document.body.appendChild(e);e.addEventListener('click',ev=>{if(ev.target.id==='mbclose'||ev.target===e)closeBox()})}return e}
+function closeBox(){clearInterval(mbTm);const e=document.getElementById('mbx');if(e)e.hidden=true;if(inMenu)menuUI()}
+function openBox(){const x=t(),e=mbEl();e.hidden=false;clearInterval(mbTm);
+if(!boxReady()){e.innerHTML=`<div class="mbp"><h3>🎁 ${x.boxTitle}</h3><div class="mbi lock">🎁</div><p class="mbt">${x.boxCome}<br><b id="mbc">${fmtHMS(boxLeft())}</b></p><button class="big alt" id="mbclose">${x.upOk}</button></div>`;
+mbTm=setInterval(()=>{const c=document.getElementById('mbc');if(!c){clearInterval(mbTm);return}if(boxReady()){clearInterval(mbTm);openBox();return}c.textContent=fmtHMS(boxLeft())},1000);return}
+e.innerHTML=`<div class="mbp"><h3>🎁 ${x.boxTitle}</h3><div class="mbi ready" id="mbb">🎁</div><p class="mbt">${x.boxTap}</p></div>`;
+const b=document.getElementById('mbb');let busy=false;
+b.onclick=()=>{if(busy)return;busy=true;const r=claimBox();if(!r){openBox();return}
+b.classList.remove('ready');b.classList.add('shake');try{[0,.12,.24,.36,.48,.6,.72].forEach(w=>tone(160+w*200,.06,'square',w))}catch(er){}
+setTimeout(()=>{b.classList.remove('shake');b.classList.add('pop');setTimeout(()=>showBoxReward(r),420)},900)}}
+function showBoxReward(r){const x=t(),e=mbEl();
+const sp=Array.from({length:16},(_,i)=>`<i class="sp" style="--a:${i*22.5}deg;--d:${80+(i%3)*24}px;animation-delay:${(i%4)*.06}s"></i>`).join('');
+let ic,line,sub='';
+if(r.t==='c'){ic='🪙';line=`+<span id="mbn">0</span> ${x.boxCoins}`;if(r.dup)sub=x.boxDup}
+else if(r.t==='x'){ic='⭐';line=`+<span id="mbn">0</span> ${x.boxXp}`}
+else{ic=`<img class="avi big" src="${streetUri(r.v)}" alt="">`;line=x.boxVip}
+e.innerHTML=`<div class="mbp rw"><div class="vh"><div class="spk">${sp}</div><div class="mbic">${ic}</div></div><p class="mbt">${x.boxWon}</p><div class="mbv">${line}</div>${sub?`<p class="mbs">${esc(sub)}</p>`:''}<div class="mbbal">🪙 ${coins.toLocaleString()} · ⭐ ${x.lvlL} ${ecoLvl()}</div><button class="big" id="mbclose">${x.upOk}</button></div>`;
+try{snd.win()}catch(er){}if(r.t!=='v')countUp('mbn',r.v,900);if(inMenu)menuUI()}
+
+/* leaderboard: Friends works with the existing /api/profile; Daily/Weekly/Global read GET /api/leaderboard?scope=daily|weekly|global
+   -> {entries:[{playerId,name,avatar,rankPoints,wins}]} (server side still to be added) */
+let lbTab='friends';
+const lbNum=v=>Math.max(0,+v||0);
+const lbNorm=e=>({id:String(e.playerId||''),name:String(e.name||'Player'),av:e.avatar?esc(e.avatar):'🙂',rp:lbNum(e.rankPoints),w:lbNum(e.wins!==undefined?e.wins:e.totalWins)});
+const lbMe=()=>({id:pid,name:(names[0]||'').trim()||'Player 1',av:null,rp:stats.rk|0,w:stats.mw|0,me:true});
+const lbSort=a=>a.sort((p,q)=>q.rp-p.rp||q.w-p.w||p.name.localeCompare(q.name));
+const lbFriends=()=>{try{const a=JSON.parse(localStorage.getItem(FRK)||'[]');return Array.isArray(a)?a.filter(v=>/^usr_[a-z0-9]{4,20}$/.test(v)).slice(0,30):[]}catch(e){return[]}};
+const lbSaveFriends=a=>{try{localStorage.setItem(FRK,JSON.stringify(a.slice(0,30)))}catch(e){}};
+function lbRowsHtml(rows,x){return rows.map((r,i)=>{const pos=r.pos||['🥇','🥈','🥉'][i]||('#'+(i+1));return`<div class="lbr${r.me?' me':''}"><span class="rk">${pos}</span><span class="la">${r.me?avBig():r.av}</span><span class="ln">${esc(r.name)}${r.me&&prof2.cc?' '+flagEmoji(prof2.cc):''}${r.me?' · '+x.lbYou:''}${r.off?' ·  ⚠':''}</span><span class="lp"><b>${r.rp}</b><small>🏆 ${r.w}</small></span>${r.fr?`<i class="lbx" data-lbrm="${esc(r.id)}">✕</i>`:''}</div>`}).join('')}
+async function friendRows(){const ids=lbFriends();return Promise.all(ids.map(async id=>{try{const r=await api2('/api/profile?playerId='+encodeURIComponent(id));const p=r.ok&&r.j&&r.j.profile;if(p&&p.playerId===id){const o=lbNorm(p);o.fr=true;return o}}catch(e){}return{id,name:id,av:'👤',rp:0,w:0,off:true,fr:true}}))}
+async function addFriend(raw){const x=t(),id=String(raw||'').trim().toLowerCase();if(!/^usr_[a-z0-9]{4,20}$/.test(id)||id===pid)return x.lbNF;const f=lbFriends();if(f.includes(id))return'';
+try{const r=await api2('/api/profile?playerId='+encodeURIComponent(id));if(!r.ok||!r.j||!r.j.profile)return x.lbNF}catch(e){}
+f.push(id);lbSaveFriends(f);return''}
+function lbEl(){let e=document.getElementById('lbm');if(!e){e=document.createElement('div');e.id='lbm';e.hidden=true;document.body.appendChild(e);
+e.addEventListener('click',async ev=>{const tg=ev.target,x=t();if(tg===e||tg.id==='lbclose'){closeLb();return}
+const tb=tg.closest&&tg.closest('[data-lbt]');if(tb){loadLb(tb.dataset.lbt);return}
+const rm=tg.closest&&tg.closest('[data-lbrm]');if(rm){lbSaveFriends(lbFriends().filter(v=>v!==rm.dataset.lbrm));loadLb('friends');return}
+if(tg.id==='lbcp'){const ok=await copyText(pid);tg.textContent=ok?x.lbCopied:pid;setTimeout(()=>{if(tg.isConnected)tg.textContent=x.lbCopy},1500);return}
+if(tg.id==='lbad'){const inp=document.getElementById('lbin'),msg=await addFriend(inp&&inp.value);if(msg){const m=document.getElementById('lbms');if(m)m.textContent=msg}else loadLb('friends')}})}return e}
+function closeLb(){const e=document.getElementById('lbm');if(e)e.hidden=true}
+function openLb(){const x=t(),e=lbEl();e.hidden=false;
+e.innerHTML=`<div class="lbp"><div class="lbh"><h3>🏆 ${x.mLb}</h3><button class="sm" id="lbclose">✕</button></div><div class="lbt">${[['daily',x.lbDaily],['weekly',x.lbWeekly],['friends',x.lbFriends],['global',x.lbGlobal]].map(([k,n])=>`<b data-lbt="${k}">${n}</b>`).join('')}</div><div id="lbbody"></div></div>`;loadLb(lbTab)}
+async function loadLb(tab){const x=t(),body=document.getElementById('lbbody');if(!body)return;lbTab=tab;
+document.querySelectorAll('#lbm [data-lbt]').forEach(b=>b.classList.toggle('on',b.dataset.lbt===tab));
+body.innerHTML=`<p class="lbn">${x.lbLoad}</p>`;let rows=[],note='';
+if(tab==='friends'){rows=await friendRows();rows.push(lbMe());lbSort(rows)}
+else{try{const r=await api2('/api/leaderboard?scope='+tab+'&limit=50');if(r.ok&&r.j&&Array.isArray(r.j.entries)){rows=r.j.entries.map(lbNorm);const mi=rows.findIndex(o=>o.id===pid);if(mi>=0)rows[mi].me=true;else{const m=lbMe();m.pos='—';rows.push(m)}}else note=x.lbNoSrv}catch(e){note=x.lbNoSrv}
+if(note)rows=[lbMe()]}
+if(lbTab!==tab)return;
+let h=note?`<p class="lbn">${note}</p>`:'';h+=lbRowsHtml(rows,x);
+if(tab==='friends'){h+=`<div class="lbf"><input id="lbin" class="pni" maxlength="24" placeholder="${x.lbAddPh}" autocapitalize="none"><button class="sm" id="lbad">${x.lbAdd}</button></div><p class="lbn" id="lbms">${lbFriends().length?'':x.lbNoFr}</p><div class="lbid">${x.lbMyId}: <b>${esc(pid)}</b> <button class="sm" id="lbcp">${x.lbCopy}</button></div>`}
+body.innerHTML=h}
+
+/* solo entry fee: the existing coins-match settlement (pot split among the winning team) does the rest */
+function soloDlg(){const x=t();if(soloStake>coins)soloStake=0;
+const chips=[0,100,500,1000,5000].map(v=>`<b data-sst="${v}" class="${soloStake===v?'on':''}${v>coins?' dis2':''}">${v?'🪙 '+v.toLocaleString():x.ssFree}</b>`).join('');
+upShow(`<h3>${x.chm}</h3><label class="sdl">${x.ssT} · ${x.bal}: 🪙 ${coins.toLocaleString()}</label><div class="sw chips">${chips}</div><button class="big" id="s11">🤖 ${x.sBot11}</button><button class="big" id="s22">🤖 ${x.sBot22}</button><button class="big" id="spp">👥 ${x.sPP}</button><button class="big alt" id="upx">${x.mBack}</button>`)}
+function menuHTML(){const x=t(),rdy=boxReady(),fl=prof2.cc?flagEmoji(prof2.cc):'';
+return`<div class="mhd"><div class="pcard2" id="pc"><span class="av2">${avBig()}</span><div class="pid"><div class="pn"><b>${esc(nm(0))}</b>${fl?`<span class="fl">${fl}</span>`:''}</div><em class="ttl2">${titleOf(stats.mw,lang)}</em></div></div><div class="wal"><div class="chip2"><b>🪙 ${coins.toLocaleString()}</b><small>${x.coinsL}</small></div><div class="chip2"><b>🏆 ${stats.rk|0}</b><small>${x.rkL}</small></div><div class="chip2"><b>⭐ ${ecoLvl()}</b><small>${x.xpL} ${eco.xp%XP_LV}/${XP_LV}</small></div></div></div><button class="big" data-m="solo">🤖 ${x.mSolo}</button><button class="big alt" data-m="lan">📡 ${x.mLan}</button><button class="big alt" data-m="online">🌐 ${x.mOnline}</button><div class="row2"><button class="big alt bx${rdy?' ready':''}" data-m="box">🎁 ${x.mBox}<span class="sub" id="bxc">${rdy?x.mBoxReady:fmtHMS(boxLeft())}</span></button><button class="big alt" data-m="lb">🏆 ${x.mLb}</button></div>`}
+function menuUI(){$('menu').innerHTML=menuHTML()}
+function streetGrid(){const n=STREET_SPECS.length+VIP_N;return Array.from({length:n},(_,k)=>{const vip=k>=STREET_SPECS.length,own=!vip||eco.vip.includes(k);return`<b ${own?`data-sav="${k}"`:'data-lock="1"'} class="${prof2.k==='street'&&prof2.s===k?'on':''}${vip?' vip':''}${own?'':' lk'}"><img class="avi" src="${streetUri(k)}" alt="">${own?'':'<i class="lki">🔒</i>'}</b>`}).join('')}
+function profExtras(x){const lv=ecoLvl(),xp=eco.xp%XP_LV;return`<div class="sdl">⭐ ${x.lvlL} ${lv} · ${xp}/${XP_LV} ${x.xpL}</div><div class="bar"><i style="width:${xp*100/XP_LV}%;background:var(--ac)"></i></div>${CAN_PHOTO?`<div class="sdl">${x.pfPhoto}</div><div class="sw chips"><b id="phb">📷 ${x.pfUpload}</b>${photo?`<b id="phx">🗑 ${x.pfRemove}</b>`:''}</div><input type="file" id="phf" accept="image/*" hidden>`:''}<div class="sdl">${x.pfStreet}</div><div class="sw chips ag sdg">${streetGrid()}</div><div class="sdl">${x.pfCountry}</div><select id="pcc" class="pni"><option value="">🌍 ${x.pfNone}</option>${ccOptions()}</select>`}
 /*sd127-profile*/
 /* Street avatars: procedural SVG (no image files). spec = [bg, skin, hair, accessory] */
 const STREET_SPECS=[
@@ -583,15 +670,15 @@ function streetSvg(i){const [bg,sk,hr,ac]=STREET_SPECS[i%STREET_SPECS.length];
  const hoodTop=ac==='hood'?`<path d="M14 30a18 17 0 0 1 36 0c-4-6-10-9-18-9s-14 3-18 9z" fill="#1d1d24"/>`:'';
  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="32" fill="${bg}"/>${back.includes('circle')?back:''}${body}${ac==='hood'?A.split('<ellipse')[0]:''}${head}${ac==='hood'?'<ellipse cx="32" cy="33" rx="15" ry="17" fill="'+sk+'"/>':''}${eyes}<path d="M26 40q6 5 12 0" fill="none" stroke="#3a1f0f" stroke-width="2" stroke-linecap="round"/>${hoodTop}${front}${chain}</svg>`}
 
-const streetUri=i=>'data:image/svg+xml;utf8,'+encodeURIComponent(streetSvg(i));
+const streetUri=i=>{let s=i<STREET_SPECS.length?streetSvg(i):streetSvg([3,6,9,10][i-STREET_SPECS.length]).replace(/<circle cx="32" cy="32" r="32" fill="[^"]*"\/>/,'<circle cx="32" cy="32" r="32" fill="#1a1405"/>').replace('</svg>','<circle cx="32" cy="32" r="30" fill="none" stroke="#f5c542" stroke-width="3.5"/><path d="M32 2l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5-3.6-3.5 5-.7z" fill="#f5c542"/></svg>');return'data:image/svg+xml;utf8,'+encodeURIComponent(s)};
 const CC='AF AL DZ AD AO AG AR AM AU AT AZ BS BH BD BB BY BE BZ BJ BT BO BA BW BR BN BG BF BI CV KH CM CA CF TD CL CN CO KM CG CD CR CI HR CU CY CZ DK DJ DM DO EC EG SV GQ ER EE SZ ET FJ FI FR GA GM GE DE GH GR GD GT GN GW GY HT HN HU IS IN ID IR IQ IE IT JM JP JO KZ KE KI KW KG LA LV LB LS LR LY LI LT LU MG MW MY MV ML MT MH MR MU MX FM MD MC MN ME MA MZ MM NA NR NP NL NZ NI NE NG KP MK NO OM PK PW PA PG PY PE PH PL PT QA RO RU RW KN LC VC WS SM ST SA SN RS SC SL SG SK SI SB SO ZA KR SS ES LK SD SR SE CH SY TJ TZ TH TL TG TO TT TN TR TM TV UG UA AE GB US UY UZ VU VA VE VN YE ZM ZW PS TW HK MO XK'.split(' ').filter(c=>c!=='IL');
 const flagEmoji=c=>CC.includes(c)?String.fromCodePoint(...[...c].map(ch=>127397+ch.charCodeAt(0))):'';
 const P2K='dm_prof2',PHK='dm_photo';
-let prof2={k:'emoji',s:0,cc:''},photo='';
-try{const o=JSON.parse(localStorage.getItem(P2K)||'{}');if(o&&typeof o==='object'){prof2.k=['emoji','street','photo'].includes(o.k)?o.k:'emoji';prof2.s=(+o.s||0)%STREET_SPECS.length;prof2.cc=CC.includes(o.cc)?o.cc:''}}catch(e){}
+let prof2={k:'street',s:0,cc:''},photo='';
+try{const o=JSON.parse(localStorage.getItem(P2K)||'{}');if(o&&typeof o==='object'){prof2.k=o.k==='photo'?'photo':'street';prof2.s=o.k==='street'?(+o.s||0):((avs[0]|0)%STREET_SPECS.length);if(prof2.s>=STREET_SPECS.length&&!eco.vip.includes(prof2.s))prof2.s=0;prof2.cc=CC.includes(o.cc)?o.cc:''}else prof2.s=(avs[0]|0)%STREET_SPECS.length}catch(e){}
 try{photo=localStorage.getItem(PHK)||''}catch(e){}
 if(!/^data:image\/jpeg;base64,/.test(photo))photo='';
-if(prof2.k==='photo'&&!photo)prof2.k='emoji';
+if(prof2.k==='photo'&&!photo)prof2.k='street';
 const saveProf2=()=>{try{localStorage.setItem(P2K,JSON.stringify(prof2))}catch(e){}};
 /* the photo button needs a WebView file chooser; in the APK it appears only when the native side declares support */
 const CAN_PHOTO=!NA||(typeof Native.supportsFilePicker==='function'&&!!Native.supportsFilePicker());
@@ -611,7 +698,7 @@ img.onerror=()=>{URL.revokeObjectURL(url);bad()};img.src=url}
 function ccOptions(){let dn=null;try{dn=new Intl.DisplayNames([lang],{type:'region'})}catch(e){}
 const nn=c=>{try{return(dn&&dn.of(c))||c}catch(e){return c}};
 return CC.map(c=>({c,n:nn(c)})).sort((a,b)=>a.n.localeCompare(b.n,lang)).map(o=>`<option value="${o.c}"${o.c===prof2.cc?' selected':''}>${flagEmoji(o.c)} ${esc(o.n)}</option>`).join('')}
-function profExtras(x){return`${CAN_PHOTO?`<div class="sdl">${x.pfPhoto}</div><div class="sw chips"><b id="phb">📷 ${x.pfUpload}</b>${photo?`<b id="phx">🗑 ${x.pfRemove}</b>`:''}</div><input type="file" id="phf" accept="image/*" hidden>`:''}<div class="sdl">${x.pfStreet}</div><div class="sw chips ag sdg">${STREET_SPECS.map((_,k)=>`<b data-sav="${k}" class="${prof2.k==='street'&&prof2.s===k?'on':''}"><img class="avi" src="${streetUri(k)}" alt=""></b>`).join('')}</div><div class="sdl">${x.pfCountry}</div><select id="pcc" class="pni"><option value="">🌍 ${x.pfNone}</option>${ccOptions()}</select>`}
+/* profExtras: see sd129-eco */
 /* pass voice: device TTS in the UI language; drop audio files into PassVoice.files or return true from window.onPassVoice(seat,lang) to replace it */
 const PassVoice={files:{},words:{en:'Pass',fr:'Passe',ar:'باس'},tags:{en:'en-US',fr:'fr-FR',ar:'ar-SA'},
 play(p){if(mute||!vol)return;const l=lang;if(typeof window.onPassVoice==='function'&&window.onPassVoice(p,l)===true)return;
@@ -621,7 +708,6 @@ function ProfileModal(){const x=t(),p=profileData(),w=stats.mw,i=titleIdx(w),hi=
 $('pp').innerHTML=`<div class="pmh"><span class="pav">${avBig()}</span><div style="flex:1"><input id="pn2" class="pni" maxlength="12" value="${esc(p.name)}"><div class="ttl">${titleOf(w,lang)}</div></div></div>
 <div class="bar"><i style="width:${pr}%;background:var(--ac)"></i></div><small>${nx?`${x.nextT}: ${titleOf(nx,lang)} (${w}/${nx})`:x.maxT}</small>
 <div class="sg"><div><b>${p.rankPoints}</b><span>${x.rankP}</span></div><div><b>${p.totalWins}</b><span>${x.totW}</span></div><div><b>${p.winRate}</b><span>${x.winR}</span></div><div><b>${p.blockedWins}</b><span>${x.blkW}</span></div><div><b>${p.winStreak}</b><span>${x.winS}</span></div><div><b>${stats.mp}</b><span>${x.matchesS}</span></div></div>
-<div class="sw chips ag">${AV.map((a,k)=>`<b data-pav="${k}" class="${prof2.k==='emoji'&&k===avs[0]?'on':''}">${a}</b>`).join('')}</div>
 ${profExtras(x)}
 <div class="lanb">🆔 ${x.pidL}: <b>${esc(pid)}</b><br>${syncSt==='ok'?'☁ '+x.synced:'⚠ '+x.offline}${pend.length?' ('+pend.length+')':''}</div>
 <button class="big" id="pmx">${x.close}</button><div class="ftm">${CR}</div>`;$('pm').hidden=false}
@@ -754,7 +840,9 @@ $('sp').oninput=e=>{if(e.target.id==='pn'){names[0]=e.target.value;saveSet();ret
 $('set').onclick=e=>{if(e.target.id==='set')$('set').hidden=true};
 $('seats').oninput=e=>{const n=e.target.dataset.n;if(n!==undefined){names[+n]=e.target.value;saveSet()}};
 $('menu').onclick=e=>{if(e.target.closest('#pc')){ProfileModal();return}const b=e.target.closest('button');if(!b)return;const m=b.dataset.m,x=t();
-if(m==='solo')upShow(`<h3>${x.chm}</h3><button class="big" id="s11">🤖 ${x.sBot11}</button><button class="big" id="s22">🤖 ${x.sBot22}</button><button class="big" id="spp">👥 ${x.sPP}</button><button class="big alt" id="upx">${x.mBack}</button>`)
+if(m==='solo')soloDlg()
+else if(m==='box')openBox()
+else if(m==='lb')openLb()
 else if(m==='lan'){inMenu=false;if(NA)setMode(1);else render()}
 else if(m==='online'){inMenu=false;setMode(3)}};
 $('hand').addEventListener('pointerdown',dragStart);window.addEventListener('pointermove',dragMove);window.addEventListener('pointerup',e=>dragEnd(e,false));window.addEventListener('pointercancel',e=>dragEnd(e,true));
@@ -770,13 +858,21 @@ $('sR').onclick=e=>{const y=e.target.closest('[data-y]');if(!y||over>=0||dealing
 $('bk').onclick=()=>{if(net.host||net.client)setMode(0);inMenu=true;render()};
 $('nt').onclick=e=>{const b=e.target.closest('b');if(b)setMode(+b.dataset.nm)};
 $('lan').onclick=e=>{if(onlineClick(e.target.id))return;if(e.target.id==='jc'){const ip=$('hip').value.trim();if(!ip)return;net.last=ip;net.msg='\u2026';net.myname=(names[0]||'').trim()||'Player';net.bk={names:[...names],avs:[...avs]};net.client=true;Native.connect('ws://'+ip+':'+net.port);render()}};
-$('upp').onclick=e=>{const kb=e.target.closest('[data-k]');if(kb){sendRx(kb.dataset.k);$('up').hidden=true;return}const id=e.target.id;if(id==='upx')$('up').hidden=true;else if(id==='s11'||id==='s22'){$('up').hidden=true;gm=id==='s11'?'1v1':'2v2';seat=gm==='1v1'?[1,0,2,0]:[1,2,2,2];stake=0;newMatch();startRound()}else if(id==='spp'){$('up').hidden=true;gm='1v1';stake=0;seat=[1,0,1,0];if(/^Player \d$/.test(names[2]))names[2]='Player 2';newMatch();startRound()}else if(id==='qy'){$('up').hidden=true;toMenu()}else if(id==='qn')$('up').hidden=true;else if(id==='upgo'){const u=e.target.dataset.u;$('upp').innerHTML=`<h3>${t().upDl}</h3><h2 id="upb">0%</h2>`;Native.installUpdate(u)}};
+$('upp').onclick=e=>{const kb=e.target.closest('[data-k]');if(kb){sendRx(kb.dataset.k);$('up').hidden=true;return}const id=e.target.id;if(id==='upx')$('up').hidden=true;else if(id==='s11'||id==='s22'){$('up').hidden=true;gm=id==='s11'?'1v1':'2v2';seat=gm==='1v1'?[1,0,2,0]:[1,2,2,2];stake=soloStake;if(newMatch())startRound();else stake=0}else if(id==='spp'){$('up').hidden=true;gm='1v1';stake=0;seat=[1,0,1,0];if(/^Player \d$/.test(names[2]))names[2]='Player 2';newMatch();startRound()}else if(id==='qy'){$('up').hidden=true;toMenu()}else if(id==='qn')$('up').hidden=true;else if(id==='upgo'){const u=e.target.dataset.u;$('upp').innerHTML=`<h3>${t().upDl}</h3><h2 id="upb">0%</h2>`;Native.installUpdate(u)}};
+/*sd129-boot*/
+(function(){
+const prevBack=window.onBackPress;
+window.onBackPress=()=>{const m=document.getElementById('mbx'),l=document.getElementById('lbm');
+if(m&&!m.hidden){closeBox();return true}if(l&&!l.hidden){closeLb();return true}return prevBack?prevBack():false};
+$('upp').addEventListener('click',e=>{const c=e.target.closest&&e.target.closest('[data-sst]');if(!c)return;const v=+c.dataset.sst;if(v>coins)return;soloStake=v;eco.ss=v;saveEco();soloDlg()});
+$('pp').addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-lock]')){const x=t();upShow(`<h3>🔒</h3><p>${x.vipLock}</p><button class="big" id="upx">${x.upOk}</button>`)}});
+setInterval(()=>{if(!inMenu||inGame)return;const c=document.getElementById('bxc');if(!c)return;const rdy=boxReady(),was=c.parentNode.classList.contains('ready');if(rdy!==was){menuUI();return}c.textContent=rdy?t().mBoxReady:fmtHMS(boxLeft())},1000)})();
 /*sd127-boot*/
 if(!String(names[0]||'').trim())names[0]='Player 1';
 (function(){const pp=$('pp');
 pp.addEventListener('click',e=>{const t0=e.target,cl=s=>t0.closest&&t0.closest(s);
 if(cl('[data-pav]')){prof2.k='emoji';saveProf2();ProfileModal();render();return}
-const sv=cl('[data-sav]');if(sv){prof2.k='street';prof2.s=(+sv.dataset.sav||0)%STREET_SPECS.length;saveProf2();ProfileModal();render();return}
+const sv=cl('[data-sav]');if(sv){prof2.k='street';{const k0=+sv.dataset.sav||0;prof2.s=(k0<STREET_SPECS.length||eco.vip.includes(k0))?k0:0};saveProf2();ProfileModal();render();return}
 if(t0.id==='phb'){const f=$('phf');if(f)f.click();return}
 if(t0.id==='phx'){try{localStorage.removeItem(PHK)}catch(x){}photo='';if(prof2.k==='photo')prof2.k='emoji';saveProf2();ProfileModal();render()}});
 pp.addEventListener('change',e=>{const t0=e.target;

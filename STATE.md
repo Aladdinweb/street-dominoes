@@ -1,4 +1,4 @@
-# Street Dominoes - project state (v1.2.8)
+# Street Dominoes - project state (v1.2.9)
 
 by ILINE TECH / FERAK ALADDIN. Android app (WebView + Kotlin) + Cloudflare Worker backend. Everything below describes what is in this repo now.
 

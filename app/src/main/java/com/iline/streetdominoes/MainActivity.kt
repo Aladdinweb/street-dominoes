@@ -11,6 +11,7 @@ import android.provider.Settings
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -34,6 +35,7 @@ class MainActivity : Activity() {
     private val socks = ConcurrentHashMap<Int, WebSocket>()
     private val counter = AtomicInteger(0)
     private var pendingMic: PermissionRequest? = null
+    private var fileCb: ValueCallback<Array<Uri>>? = null   // pending <input type=file> request from the WebView
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(b: Bundle?) {
@@ -45,6 +47,24 @@ class MainActivity : Activity() {
         web.webViewClient = WebViewClient()
         web.settings.mediaPlaybackRequiresUserGesture = false   // remote voice must play without a tap
         web.webChromeClient = object : WebChromeClient() {
+            // profile photo: let <input type="file" accept="image/*"> open the system picker (gallery / files, no storage permission needed)
+            override fun onShowFileChooser(view: WebView, cb: ValueCallback<Array<Uri>>, params: WebChromeClient.FileChooserParams): Boolean {
+                fileCb?.onReceiveValue(null)
+                fileCb = cb
+                return try {
+                    val pick = Intent(Intent.ACTION_GET_CONTENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "image/*"
+                    }
+                    @Suppress("DEPRECATION")
+                    startActivityForResult(Intent.createChooser(pick, null), 78)
+                    true
+                } catch (e: Exception) {
+                    fileCb = null
+                    cb.onReceiveValue(null)
+                    true
+                }
+            }
             override fun onPermissionRequest(req: PermissionRequest) {
                 runOnUiThread {
                     if (!req.resources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)) { req.deny(); return@runOnUiThread }
@@ -79,6 +99,18 @@ class MainActivity : Activity() {
         }
     }
 
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == 78) {
+            val uri = data?.data
+            val result: Array<Uri>? = if (resultCode == RESULT_OK && uri != null) arrayOf(uri) else null
+            fileCb?.onReceiveValue(result)
+            fileCb = null
+            return
+        }
+        super.onActivityResult(requestCode, resultCode, data)
+    }
+
     override fun onDestroy() {
         try { server?.stop(100) } catch (_: Exception) {}
         try { client?.close() } catch (_: Exception) {}
@@ -106,6 +138,7 @@ class MainActivity : Activity() {
 
     inner class Bridge {
         @JavascriptInterface fun version(): String = BuildConfig.VERSION_NAME
+        @JavascriptInterface fun supportsFilePicker(): Boolean = true
 
         // ---- LAN host ----
         @JavascriptInterface fun hostStart(port: Int): String {

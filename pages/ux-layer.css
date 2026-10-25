@@ -54,3 +54,75 @@ body{background:radial-gradient(circle at 50% -10%,#1d1d25,#08080b 70%) fixed;ov
 @media (prefers-reduced-motion:reduce){
   .pb.act{animation:none;box-shadow:0 0 0 3px var(--c),0 0 20px var(--c)}.pb.act::after{animation:none;opacity:0}}
 /*sd127:end*/
+/*sd129:begin*/
+/* v1.2.9: top-centre glowing title, menu profile card + wallet, daily box, leaderboard, exclusive avatars */
+.top{position:relative}
+#ti{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);margin:0;font-size:24px;font-weight:900;letter-spacing:1.5px;white-space:nowrap;pointer-events:none;
+  background:linear-gradient(#fff,#ff8c96);-webkit-background-clip:text;background-clip:text;color:transparent;animation:sdTitle 2.4s ease-in-out infinite}
+@keyframes sdTitle{0%,100%{filter:drop-shadow(0 0 4px rgba(225,29,46,.55)) drop-shadow(0 0 10px rgba(225,29,46,.25))}
+  50%{filter:drop-shadow(0 0 8px rgba(255,59,77,.95)) drop-shadow(0 0 22px rgba(225,29,46,.6))}}
+#bar{margin-inline-start:auto}
+
+.mhd{display:flex;flex-direction:column;gap:10px}
+.pcard2{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:18px;cursor:pointer;
+  background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.02)),rgba(18,22,32,.7);border:1px solid rgba(255,255,255,.1);
+  box-shadow:0 8px 24px rgba(0,0,0,.45),inset 0 0 18px rgba(255,255,255,.04)}
+.pcard2 .av2{width:56px;height:56px;border-radius:50%;border:2px solid var(--ac);overflow:hidden;display:grid;place-items:center;font-size:30px;flex:none;box-shadow:0 0 14px rgba(225,29,46,.5)}
+.pcard2 .av2 .avi{width:100%;height:100%}
+.pcard2 .pid{display:flex;flex-direction:column;min-width:0;gap:2px}
+.pcard2 .pn{display:flex;align-items:center;gap:8px;min-width:0}
+.pcard2 .pn b{font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pcard2 .fl{font-size:22px;flex:none}
+.pcard2 .ttl2{font-size:13px;font-style:normal;color:var(--ac)}
+.wal{display:flex;gap:8px}
+.chip2{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 6px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09)}
+.chip2 b{font-size:17px;font-weight:800}.chip2 small{color:var(--mu);font-size:11px}
+.row2{display:flex;gap:10px}.row2 .big{flex:1;padding:14px 8px;font-size:15px}
+.big .sub{display:block;font-size:12px;font-weight:600;color:var(--mu);margin-top:3px}
+.big.bx.ready{border-color:var(--ac);animation:bxPulse 1.4s ease-in-out infinite}.big.bx.ready .sub{color:#fff}
+@keyframes bxPulse{0%,100%{box-shadow:0 0 0 1px var(--ac),0 0 10px rgba(225,29,46,.5)}50%{box-shadow:0 0 0 2px var(--ac),0 0 26px rgba(225,29,46,.9)}}
+.chips b.dis2{opacity:.35;pointer-events:none}
+
+/* overlays: daily box + leaderboard */
+#mbx,#lbm{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.74);display:flex;align-items:center;justify-content:center;padding:14px;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+#mbx[hidden],#lbm[hidden]{display:none}
+.mbp,.lbp{width:100%;max-width:400px;max-height:92vh;overflow:auto;border-radius:22px;padding:18px;text-align:center;border:1px solid var(--ac);
+  background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,0) 45%),rgba(18,22,32,.82);box-shadow:0 14px 44px rgba(0,0,0,.6),inset 0 0 26px rgba(255,255,255,.05)}
+.mbp h3,.lbp h3{margin:0}
+.mbi{display:inline-block;font-size:110px;line-height:1;margin:16px 0;user-select:none;cursor:pointer;filter:drop-shadow(0 10px 18px rgba(0,0,0,.6))}
+.mbi.ready{animation:mbFloat 1.6s ease-in-out infinite;filter:drop-shadow(0 0 22px rgba(225,29,46,.85))}
+.mbi.lock{cursor:default;filter:grayscale(1) brightness(.65)}
+.mbi.shake{animation:mbShake .9s linear both}
+.mbi.pop{animation:mbPop .45s ease-out both}
+@keyframes mbFloat{50%{transform:translateY(-8px) scale(1.04)}}
+@keyframes mbShake{0%,100%{transform:rotate(0)}10%{transform:rotate(-10deg) scale(1.05)}20%{transform:rotate(10deg) scale(1.08)}30%{transform:rotate(-14deg) scale(1.1)}40%{transform:rotate(14deg) scale(1.12)}50%{transform:rotate(-18deg) scale(1.15)}60%{transform:rotate(18deg) scale(1.18)}80%{transform:rotate(-8deg) scale(1.2)}}
+@keyframes mbPop{0%{transform:scale(1.2)}60%{transform:scale(1.9);filter:brightness(2.5) drop-shadow(0 0 40px #fff)}100%{transform:scale(2.4);opacity:0}}
+.mbt{color:var(--mu);margin:6px 0}.mbs{color:var(--mu);font-size:13px}
+.mbic{font-size:96px;line-height:1.1;animation:vpop .6s cubic-bezier(.2,1.4,.4,1) both}
+.avi.big{width:110px;height:110px}
+.mbv{font-size:30px;font-weight:900;color:#fff;margin:6px 0}
+.mbbal{margin:10px 0 14px;color:var(--mu);font-size:14px}
+
+.lbh{display:flex;justify-content:space-between;align-items:center}
+.lbt{display:flex;gap:6px;margin:12px 0}
+.lbt b{flex:1;text-align:center;padding:9px 2px;border-radius:12px;border:2px solid var(--line);background:var(--card);font-weight:700;font-size:13px;cursor:pointer}
+.lbt b.on{border-color:var(--ac);color:var(--ac);box-shadow:0 0 14px rgba(225,29,46,.45)}
+.lbr{display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:6px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);text-align:start}
+.lbr.me{border-color:var(--ac);background:rgba(225,29,46,.13)}
+.lbr .rk{width:34px;font-weight:800;text-align:center;flex:none}
+.lbr .la{width:34px;height:34px;border-radius:50%;overflow:hidden;display:grid;place-items:center;font-size:22px;flex:none;background:#1a2130}
+.lbr .la .avi{width:100%;height:100%}
+.lbr .ln{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700}
+.lbr .lp{display:flex;flex-direction:column;align-items:flex-end;font-size:15px}.lbr .lp small{color:var(--mu);font-size:11px}
+.lbx{font-style:normal;color:var(--mu);padding:4px 6px;cursor:pointer}
+.lbn{color:var(--mu);font-size:13px;margin:8px 0}
+.lbf{display:flex;gap:8px;margin-top:10px;align-items:center}.lbf .pni{margin:0;flex:1}
+.lbid{margin-top:8px;color:var(--mu);font-size:13px;display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap}
+
+/* exclusive (VIP) avatars: gold is reserved for these */
+.sdg b.vip{box-shadow:0 0 0 1px var(--vip),0 0 10px rgba(245,197,66,.5)}
+.sdg b.lk{position:relative}.sdg b.lk .avi{filter:grayscale(1) brightness(.5)}
+.lki{position:absolute;inset:0;display:grid;place-items:center;font-style:normal;font-size:16px}
+#upp{max-height:88vh;overflow:auto}
+@media (prefers-reduced-motion:reduce){#ti,.big.bx.ready,.mbi.ready{animation:none}}
+/*sd129:end*/

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.9
+- Profile: emoji grid removed (street avatars + photo upload); 4 exclusive avatars from the Daily Box
+- Android: native photo picker for the profile photo (MainActivity.kt)
+- Menu: redesigned profile card (avatar, name, flag) with a separate wallet (coins, rank, level); glowing centred title; version removed
+- Daily Mystery Box every 24h (coins, XP, exclusive avatars) with opening animation
+- Leaderboard window: Daily / Weekly / Friends / Global (Friends live, others need the server endpoint)
+- Solo entry fee: stake coins against bots, pot paid to the winner, stake lost by the loser
+
 ## 1.2.8
 - Layout: when a strict layout fails the start stone slides sideways/up/down (the board is re-centred anyway) so a run of doubles near the frame gets room instead of the stone after a double turning
 - Layout: zoom floor extended to 0.45 for rare long chains
