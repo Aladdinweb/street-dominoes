@@ -35,6 +35,21 @@ Implemented as additive patches to `server/src/worker.js`; rooms, matchmaking, v
 - [ ] Coin balances still live on each device, so stakes are consistent between players but not tamper-proof; server-held balances need accounts (Phase 4).
 - [ ] Known gaps: the leaderboard store loads every player into memory (fine for thousands, move to SQL / D1 beyond that); collusion between two accounts can still farm rank (Phase 3).
 
+## Update v1.3.1 - Social, presence and speed mode (server + app shipped; Android push wiring pending)
+
+- [x] **Speed mode:** host picks a turn timer (10 / 15 / 20 / 30 s, or standard) and the timeout rule: *Auto Play* (server plays a tile) or *Auto Pass* (you lose the turn when you could have played; draw / pass as usual otherwise; 3 timeouts in a row switch that seat to auto play). Countdown shown on the active player's HUD. Online rooms only.
+- [x] **Recent friends:** opponents of online and LAN matches are saved (`dm_recent`) and can be added as friends.
+- [x] **Presence:** online / in-game / offline dots (🟢 🟡 🔘) over a WebSocket to a hibernating Durable Object (instance `pr`); friends and recent players are watched live. Foreground only: a backgrounded app counts as offline, so friends get a push instead.
+- [x] **Match invites:** 1v1 head-to-head; Teammate partner (you + friend vs 2 randoms: the room asks the matchmaker for 2 players who chose the same entry fee, bots fill after 12 s); Team vs Team (you + friend A vs friends B + C). Invited friends get a reserved seat; nobody else can take it.
+- [x] **`POST /api/invite`** (invites and Street Pings: online friends in-app, offline friends by FCM push) and **`POST /api/push-token`** (max 3 devices per player). Rate limits: 20 per sender per 10 min, 20 s per invite pair, 60 s per ping pair.
+- [ ] **Android push (native FCM, not Capacitor):** the app is a native Kotlin WebView app, so push uses the Firebase Messaging SDK through the existing `Native` bridge. Needs: Gradle plugin + dependency, `google-services.json` supplied by CI (not committed to this public repo), manifest (`POST_NOTIFICATIONS`, service, channel `invites`), `MainActivity` token / tap bridge (`pushSupported`, `getPushToken`, `requestPushPermission`, `onPushOpen`). The web build never registers for push (no service worker, no Web Push).
+- [ ] Worker secrets to set: `FCM_SERVICE_ACCOUNT` (Firebase service-account JSON, not `google-services.json`), `TURN_KEY_ID`, `TURN_API_TOKEN`.
+- [x] **Voice relay:** `GET /api/turn` hands out Cloudflare Realtime TURN credentials (cached 6 h) and `sd-voice.js` adds them to every peer connection; the mic button shows a green / amber / red ring for the real connection state. Needs a real test on two phones on different networks.
+- [x] **Identity fix:** the profile name / avatar live in `dm_me` and are never taken from the server's seat list (that overwrite made different players share one name and sent the wrong name to the server). Default name is `Guest_XXXX`. Duplicate names get a number inside a room and a `#id` tag in leaderboards.
+- [x] **Free-text quick chat** (max 60 chars, links stripped, 1 message per 1.5 s). Needs report / block tools before a public Play Store release (user-generated content policy): see Phase 5.
+- [x] **Language button** (top left, 🌐): English / Français / العربية.
+- Limits: presence and invites trust the player id (spoofable until Phase 4 accounts); the presence socket holds all players in one Durable Object (fine for thousands).
+
 ## Phase 2 - Monetization (AdMob and economy)
 
 AdMob needs the native Android SDK, so this means Kotlin work in `MainActivity.kt` plus a JS bridge. Check current AdMob / Play policies on ad placement and consent (EEA/UMP) before building.
@@ -63,6 +78,7 @@ AdMob needs the native Android SDK, so this means Kotlin work in `MainActivity.k
 - [ ] Trademark registration for "Street Dominoes" (confirm the procedure and classes with an IP professional; national office plus international options).
 - [ ] Formal IP documentation: `© ILINE TECH by Ferak Aladdin` in app, store listing, repo licence / notices.
 - [ ] Google Play Store publication (store listing, privacy policy, data-safety form, content rating).
+- [ ] In-app report / block for chat and names (required by Google Play for user-generated content).
 - [ ] Launch marketing built around live WebRTC voice chat.
 
 ## Product rules (keep when changing code)
@@ -72,6 +88,8 @@ AdMob needs the native Android SDK, so this means Kotlin work in `MainActivity.k
 - The country picker intentionally excludes `IL` (owner decision); keep that filter.
 - Server profile API only accepts emoji avatars from a whitelist: never send photo or street-avatar data to it.
 - Rank points are server-owned: never let the client write them.
+- The profile name / avatar come from `ME` (`dm_me`), never from the `names` / `avs` arrays (those hold the current table's seats).
+- Secrets (`FCM_SERVICE_ACCOUNT`, `TURN_*`, keystore) live in Cloudflare / GitHub secrets, never in the repo or in chat.
 
 ## Working agreements (for any new chat session)
 

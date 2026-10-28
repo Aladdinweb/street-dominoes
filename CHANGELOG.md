@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.1
+- Speed mode: host-selected turn timer (10/15/20/30 s) with Auto Play / Auto Pass; countdown on the active HUD
+- Presence (online / in game / offline), recent players, match invites (1v1, teammate + 2 randoms, team vs team), Street Ping, POST /api/invite + /api/push-token (FCM, server side)
+- Voice: TURN relay credentials (GET /api/turn) merged into every peer connection + connection status on the mic button
+- Fix: profile name / avatar were overwritten by the table seat list (duplicate "ILINE" names); default name is Guest_XXXX; duplicate names get a number / #id tag
+- Free-text quick chat; language button (top left)
+
 ## 1.3.0
 - Server: online results recorded by the room (rank points, profile stats), GET /api/leaderboard (daily / weekly / global), stakes in online rooms and quick match
 - Client: online entry-fee picker, rank change on the result screen, Global leaderboard tab by default, Friends reject unknown IDs

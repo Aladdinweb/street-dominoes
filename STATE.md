@@ -1,4 +1,4 @@
-# Street Dominoes - project state (v1.3.0)
+# Street Dominoes - project state (v1.3.1)
 
 > Long-term plan and phases: see [ROADMAP.md](ROADMAP.md). Update both files when a feature ships.
 
@@ -97,3 +97,13 @@ Superseded by [ROADMAP.md](ROADMAP.md) (phases 1-5).
 - Features ship as `apply-vX.Y.Z.sh` patch scripts: exact-match anchors (abort unless exactly one match), syntax checks with automatic restore, idempotent, version bump, changelog, commit, push, tag. Scripts use `$TMPDIR` (Termux has no `/tmp`).
 - Tag `vX.Y.Z` builds the APK; a push to `main` redeploys the web build; a push under `server/` redeploys the Worker. Kotlin changes are only compiled by the GitHub Actions APK build.
 - Long-term plan: `ROADMAP.md`.
+
+<!-- sd131 -->
+## 15. v1.3.1: speed mode, presence, invites, voice relay, identity
+- Server (`worker.js`): `cfg.turn` (10/15/20/30, 0 = standard) and `cfg.auto` (`play` | `pass`) set by the room creator; `GameRoom.timeout()` handles a human's timer (`pass` mode skips the turn when a tile was playable, resets the blocked counter, 3 timeouts in a row set `seat.auto`). `view` adds `tl` / `tt` (time left / total), `turn`, `auto`, `pids` (human seats' player ids). `cfg.res` reserves seats for invited friends (`seatFor`), `cfg.seek` asks the matchmaker (`/_mm/seek`) for 2 random opponents with the same stake. `dn` = unique display name inside a room (profile name unchanged).
+- Presence + invites: instance `idFromName('pr')` of `Matchmaker` (hibernatable WebSockets, `?presence=1&pid=`): messages `st` (1 online / 2 in game), `watch` (max 40 ids), pushes `pres` and `inv`. Internal `/_pr/invite` does the rate limiting and in-app delivery; `POST /api/invite` then sends FCM pushes to offline friends (`fcmAccess` / `fcmSend`, HTTP v1, secret `FCM_SERVICE_ACCOUNT`). `POST /api/push-token` stores up to 3 tokens in KV `push:<id>`.
+- Voice relay: `GET /api/turn` (secrets `TURN_KEY_ID`, `TURN_API_TOKEN`, Cloudflare `generate-ice-servers`, port-53 URLs removed). `sd-voice.js` fetches it, merges STUN + TURN into every `RTCPeerConnection`, exposes `SDVoice.status()`; the game sets `data-vs` (ok / wait / bad) on the mic buttons.
+- Chat: `{t:'rx',k:'txt',x}` (server `cleanChat`, client `cleanChat` / `sendTxt` / `showTextBubble`; the old emoji / phrase keys still work).
+- App identity: `ME` / `myName()` / `myAv()` / `syncMe()` / `restoreMe()` (key `dm_me`); `saveSet()` writes the profile names from `net.bk` while connected as a client; default `Guest_XXXX`.
+- App social: `Pres` (presence socket), `recents()` / `saveRecents()` (`dm_recent`), friends window `openFr()` (invite sheet, Street Ping), `showInvite()` / `joinInvite()` / `sendInvites()`, `window.onPushOpen / onPushToken / onPushMsg` (inert without `Native.pushSupported()`), language button `setLangTo()`.
+- New storage keys: `dm_me`, `dm_recent`, `dm_ptok`, `dm_ptat`. Android FCM wiring is not in the repo yet (see ROADMAP.md).

@@ -1,4 +1,5 @@
-// Street Dominoes - online server (Cloudflare Workers + Durable Objects + KV) - v1.3.0
+// Street Dominoes - online server (Cloudflare Workers + Durable Objects + KV) - v1.3.1
+// v1.3.1: speed mode (turn timer + auto play/pass), seat reservations for friend invites, presence (hibernating WebSockets), POST /api/invite + /api/push-token (FCM HTTP v1)
 // v1.3.0: server-recorded online results (rank points, profile stats), leaderboards (GET /api/leaderboard?scope=daily|weekly|global), match stakes in online rooms/quick match
 // WebSocket endpoint:  /ws?room=CODE | /ws?create=1&gm=1v1|2v2&target=100|200|300 | /ws?quick=1&gm=1v1|2v2
 // Common params: pid (stable random player id, used for reconnects), name, av
@@ -23,6 +24,20 @@ export const API = { GAP: 3000, DAY_MAX: 150 };
 // Ranking: only matches the server saw itself change rank points (never the client-posted ones). Starts at 1000.
 export const LB = { WIN: 25, LOSS: -15, BLOCK: 5, BLOCKCAP: 10, MIN: 0, DAY_RATED: 40, MIN_ROUNDS: 2 };
 const STAKES = [0, 100, 500, 1000, 5000];
+const TURNS = [10, 15, 20, 30];                 // host-selectable turn timers (seconds); 0 = standard (CFG.TURN)
+const TYPES = ['h2h', 'partner', 'tvt'];        // invite match types: 1v1 head-to-head, you + friend vs 2 randoms, you + friend vs 2 friends
+const PINGS = ['👋', '🔥', '🎲', '😎', '🤝'];    // "Street Ping" emojis
+// reserved seats for invited friends: "2:usr_a,1:usr_b,3:usr_c" (the host keeps seat 0; in 1v1 only seat 2 exists)
+function parseRes(str, gm, host) {
+  const out = {}, ok = gm === '1v1' ? [2] : [1, 2, 3], seen = new Set([host]);
+  for (const part of String(str || '').split(',').slice(0, 3)) {
+    const [s, id] = part.split(':');
+    if (ok.includes(+s) && validId(id) && !seen.has(id) && !out[+s]) { out[+s] = id; seen.add(id); }
+  }
+  return out;
+}
+// free-text quick chat: no links, no control characters / angle brackets, max 60 characters
+export const cleanChat = s => String(s || '').replace(/https?:\/\/\S+|www\.\S+/gi, '…').replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
 export function isoWeek(d) {
   const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())), n = t.getUTCDay() || 7;
   t.setUTCDate(t.getUTCDate() + 4 - n);
@@ -38,8 +53,123 @@ const validId = id => /^usr_[a-z0-9]{4,20}$/.test(id || '');
 const blank = id => ({ playerId: id, name: 'Player', avatar: AVATARS[0], title: titleOf(0), rankPoints: 1000, totalWins: 0, winRate: '0.0%', blockedWins: 0, winStreak: 0, totalMatches: 0 });
 const pub = p => { const { lastAt, day, dc, ...rest } = p; return rest; };
 
+// ---------- Voice relay credentials (Cloudflare Realtime TURN) ----------
+// Needs the Worker secrets TURN_KEY_ID and TURN_API_TOKEN (Cloudflare dashboard > Realtime > TURN). Credentials are cached for 6 h (they live 24 h).
+// Without a relay, WebRTC voice only works when both phones can reach each other directly, which mobile (4G / CGNAT) networks often block.
+let turnCache = { at: 0, ice: null };
+async function turnApi(env) {
+  if (!env.TURN_KEY_ID || !env.TURN_API_TOKEN) return json({ error: 'turn_not_configured' }, 503);
+  const now = Date.now();
+  if (!turnCache.ice || now - turnCache.at > 6 * 36e5) {
+    let r; try { r = await fetch('https://rtc.live.cloudflare.com/v1/turn/keys/' + encodeURIComponent(env.TURN_KEY_ID) + '/credentials/generate-ice-servers', { method: 'POST', headers: { authorization: 'Bearer ' + env.TURN_API_TOKEN, 'content-type': 'application/json' }, body: JSON.stringify({ ttl: 86400 }) }); } catch (e) { return json({ error: 'turn_upstream' }, 502); }
+    if (!r.ok) return json({ error: 'turn_upstream' }, 502);
+    const j = await r.json().catch(() => ({})), list = Array.isArray(j.iceServers) ? j.iceServers : (j.iceServers ? [j.iceServers] : []);
+    const ice = list.map(s => ({ ...s, urls: [].concat(s.urls || []).filter(u => !/:53(\?|$)/.test(u)) })).filter(s => s.urls.length);   // port 53 is blocked in browsers and only causes timeouts
+    if (!ice.length) return json({ error: 'turn_upstream' }, 502);
+    turnCache = { at: now, ice };
+  }
+  return new Response(JSON.stringify({ iceServers: turnCache.ice, ttl: 86400 }), { headers: { 'content-type': 'application/json', 'cache-control': 'private, max-age=300', ...CORS } });
+}
+
+// ---------- Push notifications (FCM HTTP v1) ----------
+// Needs the Worker secret FCM_SERVICE_ACCOUNT = the Firebase service-account JSON (NOT google-services.json). Without it everything still
+// works: online friends get invites in-app, offline ones just are not notified.
+const b64u = u8 => btoa(String.fromCharCode(...u8)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+let fcmTok = { tok: '', exp: 0, project: '' };
+async function fcmAccess(env) {
+  if (!env.FCM_SERVICE_ACCOUNT) return null;
+  const now = Math.floor(Date.now() / 1000);
+  if (fcmTok.tok && fcmTok.exp - 120 > now) return fcmTok;
+  let sa; try { sa = JSON.parse(env.FCM_SERVICE_ACCOUNT); } catch (e) { return null; }
+  if (!sa || !sa.client_email || !sa.private_key || !sa.project_id) return null;
+  try {
+    const der = Uint8Array.from(atob(String(sa.private_key).replace(/-----[A-Z ]+-----/g, '').replace(/\s+/g, '')), c => c.charCodeAt(0));
+    const key = await crypto.subtle.importKey('pkcs8', der, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
+    const enc = new TextEncoder(), part = o => b64u(enc.encode(JSON.stringify(o)));
+    const head = part({ alg: 'RS256', typ: 'JWT' }) + '.' + part({ iss: sa.client_email, scope: 'https://www.googleapis.com/auth/firebase.messaging', aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 });
+    const sig = new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, enc.encode(head)));
+    const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'grant_type=' + encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') + '&assertion=' + head + '.' + b64u(sig) });
+    if (!r.ok) return null;
+    const j = await r.json();
+    if (!j.access_token) return null;
+    fcmTok = { tok: j.access_token, exp: now + ((j.expires_in | 0) || 3000), project: sa.project_id };
+    return fcmTok;
+  } catch (e) { return null; }
+}
+async function fcmSend(env, token, msg) {
+  const a = await fcmAccess(env);
+  if (!a) return 'off';
+  try {
+    const r = await fetch('https://fcm.googleapis.com/v1/projects/' + a.project + '/messages:send', { method: 'POST',
+      headers: { authorization: 'Bearer ' + a.tok, 'content-type': 'application/json' }, body: JSON.stringify({ message: { token, ...msg } }) });
+    if (r.ok) return 'ok';
+    const t = await r.text().catch(() => '');
+    if (r.status === 404 || (r.status === 400 && /registration token/i.test(t))) return 'gone';
+    if (r.status === 401) fcmTok.exp = 0;      // access token expired: mint a new one next time
+    return 'fail';
+  } catch (e) { return 'fail'; }
+}
+const TYPELBL = { h2h: 'Head-to-Head', partner: 'Teammate', tvt: 'Team vs Team' };
+function pushMsg(inv) {
+  const ch = { channel_id: 'invites', tag: inv.kind + '-' + inv.from };
+  if (inv.kind === 'ping') return { notification: { title: inv.ping + ' ' + inv.name, body: 'wants to play Street Dominoes' }, data: { kind: 'ping', from: inv.from, name: inv.name, ping: inv.ping }, android: { priority: 'HIGH', ttl: '3600s', notification: ch } };
+  const body = (TYPELBL[inv.type] || inv.gm) + (inv.stake ? ' · 🪙 ' + inv.stake : '') + (inv.turn ? ' · ⏱ ' + inv.turn + 's' : '');
+  return { notification: { title: '🎲 ' + inv.name + ' invited you', body }, android: { priority: 'HIGH', ttl: '120s', notification: ch },
+    data: { kind: 'invite', from: inv.from, name: inv.name, room: inv.room, gm: inv.gm, type: inv.type || '', stake: String(inv.stake | 0), turn: String(inv.turn | 0) } };
+}
+// POST /api/invite  {from,name,av,to:[ids],kind:'invite'|'ping', room,gm,type,stake,turn | ping}
+// Online friends get it over their presence socket; offline friends with a registered device get an FCM push.
+async function inviteApi(req, env) {
+  const raw = await req.text();
+  if (raw.length > 2048) return json({ error: 'too_large' }, 413);
+  let b; try { b = JSON.parse(raw); } catch (e) { return json({ error: 'bad_json' }, 400); }
+  if (!b || !validId(b.from) || !Array.isArray(b.to)) return json({ error: 'bad_request' }, 400);
+  const to = [...new Set(b.to.filter(validId))].filter(x => x !== b.from).slice(0, 3);
+  if (!to.length) return json({ error: 'bad_request' }, 400);
+  const kind = b.kind === 'ping' ? 'ping' : 'invite';
+  const inv = { kind, from: b.from, name: clean(b.name, 12) || 'Player', av: Math.max(0, Math.min(11, parseInt(b.av) || 0)) };
+  if (kind === 'ping') { if (!PINGS.includes(b.ping)) return json({ error: 'bad_ping' }, 400); inv.ping = b.ping; }
+  else {
+    const room = String(b.room || '').toUpperCase();
+    if (!/^[A-Z0-9]{3,8}$/.test(room)) return json({ error: 'bad_room' }, 400);
+    Object.assign(inv, { room, gm: b.gm === '1v1' ? '1v1' : '2v2', type: TYPES.includes(b.type) ? b.type : '', stake: STAKES.includes(+b.stake) ? +b.stake : 0, turn: TURNS.includes(+b.turn) ? +b.turn : 0 });
+  }
+  if (!env.MATCH) return json({ error: 'not_configured' }, 503);
+  const pr = await env.MATCH.get(env.MATCH.idFromName('pr')).fetch('https://pr.internal/_pr/invite', { method: 'POST', body: JSON.stringify({ inv, to }) });
+  if (!pr.ok) return json({ error: 'presence_unavailable' }, 502);
+  const res = await pr.json(), pushed = [], noPush = [];
+  for (const id of res.offline || []) {
+    const rec = env.PLAYER_STATS ? await env.PLAYER_STATS.get('push:' + id, 'json') : null, tokens = (rec && rec.tokens) || [];
+    let okAny = false; const keep = [];
+    for (const t of tokens) {
+      const r = await fcmSend(env, t, pushMsg(inv));
+      if (r === 'ok') okAny = true;
+      if (r !== 'gone') keep.push(t);
+    }
+    if (keep.length !== tokens.length && env.PLAYER_STATS) { if (keep.length) await env.PLAYER_STATS.put('push:' + id, JSON.stringify({ tokens: keep, at: Date.now() }), { expirationTtl: 60 * 864e2 }); else await env.PLAYER_STATS.delete('push:' + id); }
+    (okAny ? pushed : noPush).push(id);
+  }
+  return json({ ok: true, delivered: res.delivered || [], pushed, offline: noPush, limited: res.limited || [], push: !!(await fcmAccess(env)) });
+}
+// POST /api/push-token {playerId, token, remove?}: the Android app registers its FCM token (max 3 devices per player)
+async function pushTokenApi(req, env) {
+  const raw = await req.text();
+  if (raw.length > 4096) return json({ error: 'too_large' }, 413);
+  let b; try { b = JSON.parse(raw); } catch (e) { return json({ error: 'bad_json' }, 400); }
+  if (!b || !validId(b.playerId) || !/^[\w:.\-]{20,4000}$/.test(String(b.token || ''))) return json({ error: 'bad_request' }, 400);
+  const key = 'push:' + b.playerId, cur = (await env.PLAYER_STATS.get(key, 'json')) || { tokens: [] };
+  if (!b.remove && cur.tokens[0] === b.token && Date.now() - (cur.at || 0) < 864e5) return json({ ok: true, n: cur.tokens.length });   // no write needed
+  let tokens = cur.tokens.filter(t => t !== b.token);
+  if (!b.remove) tokens.unshift(b.token);
+  tokens = tokens.slice(0, 3);
+  if (tokens.length) await env.PLAYER_STATS.put(key, JSON.stringify({ tokens, at: Date.now() }), { expirationTtl: 60 * 864e2 }); else await env.PLAYER_STATS.delete(key);
+  return json({ ok: true, n: tokens.length });
+}
+
 async function api(req, env, url) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+  if (url.pathname === '/api/turn' && req.method === 'GET') return turnApi(env);
   if (url.pathname === '/api/leaderboard' && req.method === 'GET') {
     if (!env.MATCH) return json({ error: 'lb_not_configured' }, 503);
     const scope = url.searchParams.get('scope') || 'global', lim = url.searchParams.get('limit') || '50';
@@ -47,6 +177,8 @@ async function api(req, env, url) {
     return new Response(await r.text(), { status: r.status, headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=15', ...CORS } });
   }
   if (!env.PLAYER_STATS) return json({ error: 'kv_not_configured' }, 503);
+  if (url.pathname === '/api/invite' && req.method === 'POST') return inviteApi(req, env);
+  if (url.pathname === '/api/push-token' && req.method === 'POST') return pushTokenApi(req, env);
   if (url.pathname === '/api/profile' && req.method === 'GET') {
     const id = url.searchParams.get('playerId');
     if (!validId(id)) return json({ error: 'bad_id' }, 400);
@@ -93,6 +225,7 @@ export default {
     if (url.pathname !== '/ws') return new Response('Not found', { status: 404 });
     if (req.headers.get('Upgrade') !== 'websocket') return new Response('Expected WebSocket', { status: 426 });
     if (url.searchParams.get('quick')) return env.MATCH.get(env.MATCH.idFromName('mm')).fetch(req);
+    if (url.searchParams.get('presence')) return env.MATCH.get(env.MATCH.idFromName('pr')).fetch(req);
     let room = (url.searchParams.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
     if (!room) {
       if (!url.searchParams.get('create')) return new Response('room required', { status: 400 });
@@ -136,13 +269,43 @@ export class GameRoom {
     if (!this.cfg) {
       if (!q.get('create') && !q.get('gm')) { this.err(ws, 'noroom'); return res(); }
       this.code = (q.get('room') || '').slice(0, 8);
-      this.cfg = { gm: q.get('gm') === '1v1' ? '1v1' : '2v2', target: [100, 200, 300].includes(+q.get('target')) ? +q.get('target') : 200, fill: q.get('fill') === '1', host: pid, stake: STAKES.includes(+q.get('stake')) ? +q.get('stake') : 0 };
+      this.cfg = { gm: q.get('gm') === '1v1' ? '1v1' : '2v2', target: [100, 200, 300].includes(+q.get('target')) ? +q.get('target') : 200, fill: q.get('fill') === '1', host: pid, stake: STAKES.includes(+q.get('stake')) ? +q.get('stake') : 0,
+        turn: TURNS.includes(+q.get('turn')) ? +q.get('turn') : 0, auto: q.get('auto') === 'pass' ? 'pass' : 'play', type: TYPES.includes(q.get('type')) ? q.get('type') : '',
+        seek: q.get('seek') === '1', res: parseRes(q.get('res'), q.get('gm') === '1v1' ? '1v1' : '2v2', pid) };
     }
     this.attach(ws, pid, clean(q.get('name'), 12) || 'Player', Math.max(0, Math.min(11, parseInt(q.get('av')) || 0)));
+    if (this.cfg.seek && !this.seekSent) { this.seekSent = true; this.seek(); }   // "You + Friend vs 2 randoms": ask the matchmaker for two random opponents
     return res();
   }
   err(ws, m) { send(ws, { t: 'err', m }); try { ws.close(1000, m); } catch (e) {} }
 
+  // two players with the same name in one room get a number so the table (and the HUD) can tell them apart; the profile / leaderboard name is untouched
+  uniqueName(name) {
+    const taken = new Set(this.seats.filter(Boolean).map(s => String(s.dn || s.name).toLowerCase()));
+    if (!taken.has(name.toLowerCase())) return name;
+    for (let n = 2; n < 10; n++) { const c = name.slice(0, 10) + ' ' + n; if (!taken.has(c.toLowerCase())) return c; }
+    return name;
+  }
+  // invited friends sit in their reserved seat; everybody else only takes seats nobody reserved
+  seatFor(pid) {
+    const res = this.cfg.res || {};
+    const mine = this.act.find(i => res[i] === pid && !this.seats[i]);
+    if (mine !== undefined) return mine;
+    return this.act.find(i => !this.seats[i] && !res[i]);
+  }
+  async seek() {
+    const env = this.env;
+    if (!env || !env.MATCH) return;
+    try { await env.MATCH.get(env.MATCH.idFromName('mm')).fetch('https://mm.internal/_mm/seek', { method: 'POST', body: JSON.stringify({ room: this.code, stake: this.cfg.stake | 0, need: 2 }) }); } catch (e) {}
+  }
+  cancelSeek() {
+    const env = this.env;
+    if (!this.seekSent || !env || !env.MATCH) return;
+    this.seekSent = false;
+    try { env.MATCH.get(env.MATCH.idFromName('mm')).fetch('https://mm.internal/_mm/cancel', { method: 'POST', body: JSON.stringify({ room: this.code }) }).catch(() => {}); } catch (e) {}
+  }
+  // a human acted: clears the timeout streak
+  human(p) { const s = this.seats[p]; if (s && !s.bot) { s.to = 0; s.auto = false; } }
   attach(ws, pid, name, av) {
     let p = this.seats.findIndex(s => s && s.pid === pid);
     if (p >= 0) {
@@ -152,9 +315,9 @@ export class GameRoom {
       s.ws = ws; s.off = 0; this.clear('off' + p);
     } else {
       if (this.phase !== 'lobby') return this.err(ws, 'started');
-      p = this.act.find(i => !this.seats[i]);
+      p = this.seatFor(pid);
       if (p === undefined) return this.err(ws, 'full');
-      this.seats[p] = { pid, name, av, bot: false, ws, off: 0, rm: false };
+      this.seats[p] = { pid, name, dn: this.uniqueName(name), av, bot: false, ws, off: 0, rm: false };
     }
     ws.addEventListener('message', e => this.onMsg(p, ws, e.data));
     ws.addEventListener('close', () => this.onClose(p, ws));
@@ -165,12 +328,14 @@ export class GameRoom {
 
   lobby() {
     const filled = this.act.every(i => this.seats[i]), host = this.hostSeat();
+    const wait = Object.keys(this.cfg.res || {}).map(Number).filter(k => !this.seats[k]);   // invited friends who have not arrived yet
     this.seats.forEach((s, p) => {
-      if (s && s.ws) send(s.ws, { t: 'olobby', room: this.code, gm: this.cfg.gm, target: this.cfg.target, stake: this.cfg.stake | 0, host: p === host, you: p,
-        seats: this.act.map(i => { const x = this.seats[i]; return x ? { n: x.name, a: x.av, b: x.bot ? 1 : 0 } : null; }) });
+      if (s && s.ws) send(s.ws, { t: 'olobby', room: this.code, gm: this.cfg.gm, target: this.cfg.target, stake: this.cfg.stake | 0, turn: this.cfg.turn | 0, auto: this.cfg.auto, type: this.cfg.type || '', wait, host: p === host, you: p,
+        seats: this.act.map(i => { const x = this.seats[i]; return x ? { n: x.dn || x.name, a: x.av, b: x.bot ? 1 : 0 } : null; }) });
     });
     if (filled) this.after('start', 1500, () => this.startNow()); else this.clear('start');
     if (this.cfg.fill && !this.timers.fill) this.after('fill', CFG.FILL, () => this.startNow());
+    if (this.cfg.seek && !wait.length && !filled && !this.timers.sfill) this.after('sfill', CFG.QFILL, () => this.startNow());   // friend is here, randoms did not show up: bots take the seats
   }
 
   onMsg(p, ws, raw) {
@@ -190,6 +355,7 @@ export class GameRoom {
       case 'pass': this.pass(p); break;
       case 'rx':
         if ((EMO.includes(m.k) || PHR.includes(m.k)) && (!s.rx || now - s.rx > 900)) { s.rx = now; this.bcast({ t: 'rx', p, k: m.k }); }
+        else if (m.k === 'txt' && typeof m.x === 'string' && (!s.rx || now - s.rx > 1500)) { const x = cleanChat(m.x); if (x) { s.rx = now; this.bcast({ t: 'rx', p, k: 'txt', x }); } }
         break;
       case 'rematch':
         if (this.phase === 'over' && this.final) {
@@ -254,7 +420,7 @@ export class GameRoom {
   }
 
   startNow() {
-    this.clear('start'); this.clear('fill');
+    this.clear('start'); this.clear('fill'); this.clear('sfill'); this.cancelSeek();
     for (const i of this.act)
       if (!this.seats[i]) this.seats[i] = { pid: 'bot' + i, name: 'Player ' + (i + 1), av: 0, bot: true, ws: null, off: 0, rm: true };
     this.newMatch();
@@ -296,13 +462,28 @@ export class GameRoom {
     this.broadcast(); this.schedule();
   }
   schedule() {
-    this.clear('turn'); this.clear('bot');
+    this.clear('turn'); this.clear('bot'); this.turnEnds = 0;
     const s = this.seats[this.cur];
     if (!s) return;
     if (s.bot) this.after('bot', CFG.BOT[0] + rnd(CFG.BOT[1]), () => this.botStep());
-    else this.after('turn', CFG.TURN, () => this.botStep());       // AFK human: auto-play so the table never stalls
+    else { const ms = this.turnMs(); this.turnEnds = Date.now() + ms; this.after('turn', ms, () => this.timeout()); }   // human: timer (host-selected in speed mode)
   }
 
+  turnMs() { return (this.cfg.turn | 0) * 1000 || CFG.TURN; }
+  // A human's turn timer ran out. "play": the server plays for them (bot logic). "pass": they lose the turn when they could have played
+  // (nothing to play: draw / pass as usual). 3 timeouts in a row switch that seat to auto-play so the table never stalls.
+  timeout() {
+    this.clear('turn');
+    const p = this.cur, s = this.seats[p];
+    if (!s || !this.turnOk(p)) return;
+    if (s.bot || this.cfg.auto !== 'pass' || s.auto) return this.botStep();
+    s.to = (s.to || 0) + 1;
+    if (s.to >= 3) s.auto = true;
+    if (!this.playable(p).length) return this.botStep();
+    this.passes = 0;                                   // a skipped turn must not count towards a blocked table
+    this.ps = { p, id: ++this.psn };
+    this.next();
+  }
   ends() { return this.chain.length ? [this.chain[0].a, this.chain[this.chain.length - 1].b] : [-1, -1]; }
   canL(t) { if (!this.chain.length) return true; const e = this.ends()[0]; return t[0] === e || t[1] === e; }
   canR(t) { if (!this.chain.length) return true; const e = this.ends()[1]; return t[0] === e || t[1] === e; }
@@ -315,6 +496,7 @@ export class GameRoom {
     if (!this.turnOk(p) || !Number.isInteger(i) || i < 0 || !this.hands[p][i] || (side !== 'L' && side !== 'R')) return;
     const t = this.hands[p][i];
     if (side === 'L' ? !this.canL(t) : !this.canR(t)) return;
+    this.human(p);
     this.place(p, i, side);
   }
   place(p, i, side) {
@@ -329,11 +511,13 @@ export class GameRoom {
   }
   draw(p, i) {
     if (this.cfg.gm !== '1v1' || !this.turnOk(p) || this.playable(p).length || !Number.isInteger(i) || !this.yard[i]) return;
+    this.human(p);
     this.hands[p].push(this.yard[i]); this.yard[i] = null;
     this.broadcast(); this.schedule();
   }
   pass(p) {
     if (!this.turnOk(p) || this.playable(p).length || this.yardLeft()) return;
+    this.human(p);
     this.doPass();
   }
   doPass() {
@@ -430,12 +614,14 @@ export class GameRoom {
     return {
       t: 'state', you: p, room: this.code, act,
       seat: [0, 1, 2, 3].map(i => (!act.includes(i) ? 0 : this.seats[i] && this.seats[i].bot ? 2 : i === p ? 1 : 3)),
-      names: [0, 1, 2, 3].map(i => { const s = this.seats[i]; return s && (!s.bot || s.fn) ? s.name : 'Player ' + (i + 1); }),
+      names: [0, 1, 2, 3].map(i => { const s = this.seats[i]; return s && (!s.bot || s.fn) ? s.dn || s.name : 'Player ' + (i + 1); }),
       avs: [0, 1, 2, 3].map(i => (this.seats[i] ? this.seats[i].av : i)),
       wt: this.wt, gm: this.cfg.gm, stake: this.cfg.stake | 0, mid: this.mid, yd: this.yard.map(y => (y ? 1 : 0)), dealing: this.dealing, fx: this.fx,
       hands: this.hands.map((h, i) => (this.over >= 0 || i === p ? h : h.map(() => 0))),
       chain: this.chain, ci: this.ci, cur: this.cur, ps: this.ps, over: this.over, score: this.score, blocked: this.blocked, gain: this.gain,
       target: this.cfg.target, rid: this.rid, fo: this.fo, rk: this.rkres && this.rkres[p] ? this.rkres[p] : null,
+      pids: [0, 1, 2, 3].map(i => { const x = this.seats[i]; return x && (!x.bot || x.fn) && validId(x.pid) ? x.pid : null; }),
+      tl: this.timers.turn && this.turnEnds ? Math.max(0, this.turnEnds - now) : 0, tt: this.turnMs(), turn: this.cfg.turn | 0, auto: this.cfg.auto,
       off: this.seats.map((s, i) => (s && !s.bot && s.off ? { p: i, s: Math.max(0, Math.ceil((s.off - now) / 1000)) } : null)).filter(Boolean),
     };
   }
@@ -462,10 +648,14 @@ export class GameRoom {
 }
 
 export class Matchmaker {
-  constructor(state, env) { this.state = state; this.q = []; this.iv = null; }
+  constructor(state, env) { this.state = state; this.q = []; this.iv = null; this.reqs = []; }
   async fetch(req) {
     const lbu = new URL(req.url);
-    if (lbu.pathname.startsWith('/_lb/')) return this.lbFetch(req, lbu);   // leaderboard store: a separate instance of this class, reached only from inside the Worker
+    if (lbu.pathname.startsWith('/_lb/')) return this.lbFetch(req, lbu);
+    if (lbu.pathname.startsWith('/_pr/')) return this.prFetch(req, lbu);       // presence + invite delivery (instance 'pr')
+    if (lbu.pathname.startsWith('/_mm/')) return this.mmFetch(req, lbu);       // rooms asking for random opponents (instance 'mm')
+    if (lbu.searchParams.get('presence')) return this.presenceAccept(req);
+       // leaderboard store: a separate instance of this class, reached only from inside the Worker
     const q = new URL(req.url).searchParams;
     const pair = new WebSocketPair(), client = pair[0], ws = pair[1];
     ws.accept();
@@ -531,8 +721,90 @@ export class Matchmaker {
     }
     return J({ error: 'not_found' }, 404);
   }
+  // ---- rooms that were created with friends and still need random opponents ("You + Friend vs 2 randoms")
+  seekTick() {
+    const now = Date.now();
+    this.reqs = this.reqs.filter(r => now - r.since < 90000);
+    for (const r of [...this.reqs]) {
+      const l = this.q.filter(e => e.gm === '2v2' && e.stake === r.stake);
+      if (l.length >= r.need) { this.reqs = this.reqs.filter(x => x !== r); this.match(l.slice(0, r.need), '2v2', false, r.stake, r.room); }
+    }
+  }
+  async mmFetch(req, u) {
+    const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
+    let b; try { b = await req.json(); } catch (e) { return J({ error: 'bad_json' }, 400); }
+    const room = String((b && b.room) || '');
+    if (!/^[A-Z0-9]{3,8}$/.test(room)) return J({ error: 'bad_room' }, 400);
+    if (u.pathname === '/_mm/seek') {
+      this.reqs = this.reqs.filter(r => r.room !== room);
+      this.reqs.push({ room, stake: STAKES.includes(b.stake | 0) ? b.stake | 0 : 0, need: Math.max(1, Math.min(2, b.need | 0 || 2)), since: Date.now() });
+      this.tick();
+      return J({ ok: true });
+    }
+    if (u.pathname === '/_mm/cancel') { this.reqs = this.reqs.filter(r => r.room !== room); return J({ ok: true }); }
+    return J({ error: 'not_found' }, 404);
+  }
+  // ---- presence + invite delivery (instance idFromName('pr')). Hibernatable WebSockets: idle connections cost nothing; state lives in the sockets' attachments.
+  presenceAccept(req) {
+    const id = clean(new URL(req.url).searchParams.get('pid'), 24), pair = new WebSocketPair(), client = pair[0], ws = pair[1];
+    const live = this.state.getWebSockets();
+    if (!validId(id) || live.length >= 3000 || live.filter(s => (s.deserializeAttachment() || {}).id === id).length >= 3) {
+      ws.accept(); send(ws, { t: 'err', m: 'bad' }); try { ws.close(1000, 'bad'); } catch (e) {}
+      return new Response(null, { status: 101, webSocket: client });
+    }
+    this.state.acceptWebSocket(ws);
+    ws.serializeAttachment({ id, st: 1, w: [] });
+    try { this.state.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong')); } catch (e) {}
+    this.presNotify(id);
+    return new Response(null, { status: 101, webSocket: client });
+  }
+  presStatus(id, except) {          // 0 offline, 1 online, 2 in a game (best of all the player's sockets)
+    let st = 0;
+    for (const s of this.state.getWebSockets()) { if (s === except) continue; const a = s.deserializeAttachment(); if (a && a.id === id) st = Math.max(st, a.st | 0); }
+    return st;
+  }
+  presNotify(id, except) {
+    const st = this.presStatus(id, except);
+    for (const s of this.state.getWebSockets()) { if (s === except) continue; const a = s.deserializeAttachment(); if (a && a.id !== id && a.w && a.w.includes(id)) send(s, { t: 'pres', id, s: st }); }
+  }
+  async webSocketMessage(ws, msg) {
+    if (typeof msg !== 'string' || msg.length > 2000) return;
+    let m; try { m = JSON.parse(msg); } catch (e) { return; }
+    const a = ws.deserializeAttachment();
+    if (!a || !m) return;
+    if (m.t === 'st') { a.st = m.s === 2 ? 2 : 1; ws.serializeAttachment(a); this.presNotify(a.id); }
+    else if (m.t === 'watch') {
+      a.w = (Array.isArray(m.ids) ? m.ids : []).filter(validId).slice(0, 40); ws.serializeAttachment(a);
+      const all = {}; for (const x of a.w) all[x] = this.presStatus(x);
+      send(ws, { t: 'pres', all });
+    }
+  }
+  webSocketClose(ws) { const a = ws.deserializeAttachment(); try { ws.close(1000, 'bye'); } catch (e) {} if (a) this.presNotify(a.id, ws); }
+  webSocketError(ws) { const a = ws.deserializeAttachment(); if (a) this.presNotify(a.id, ws); }
+  async prFetch(req, u) {
+    const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
+    if (u.pathname !== '/_pr/invite' || req.method !== 'POST') return J({ error: 'not_found' }, 404);
+    let b; try { b = await req.json(); } catch (e) { return J({ error: 'bad_json' }, 400); }
+    const inv = b && b.inv, to = Array.isArray(b && b.to) ? b.to.slice(0, 3) : [];
+    if (!inv || !validId(inv.from)) return J({ error: 'bad_request' }, 400);
+    const now = Date.now(); this.rl = this.rl || new Map();
+    for (const [k, v] of this.rl) if (now - v.t > 600000) this.rl.delete(k);
+    let sw = this.rl.get('s:' + inv.from);                      // at most 20 invites / pings per sender per 10 minutes
+    if (!sw) { sw = { t: now, n: 0 }; this.rl.set('s:' + inv.from, sw); }
+    const out = { delivered: [], offline: [], limited: [] };
+    for (const id of to) {
+      if (!validId(id)) continue;
+      const pk = 'p:' + inv.from + ':' + id + ':' + inv.kind, last = this.rl.get(pk) || { t: 0 };
+      if (sw.n >= 20 || now - last.t < (inv.kind === 'ping' ? 60000 : 20000)) { out.limited.push(id); continue; }
+      sw.n++; this.rl.set(pk, { t: now });
+      const socks = this.state.getWebSockets().filter(s => { const a = s.deserializeAttachment(); return a && a.id === id; });
+      if (socks.length) { socks.forEach(s => send(s, { t: 'inv', ...inv })); out.delivered.push(id); } else out.offline.push(id);
+    }
+    return J(out);
+  }
   idle() { if (!this.q.length && this.iv) { clearInterval(this.iv); this.iv = null; } }
   tick() {
+    this.seekTick();
     for (const gm of ['1v1', '2v2']) for (const st of STAKES) {   // players are only matched with others who chose the same entry fee
       const need = gm === '1v1' ? 2 : 4, l = this.q.filter(e => e.gm === gm && e.stake === st);
       if (l.length >= need) this.match(l.slice(0, need), gm, false, st);
@@ -540,8 +812,8 @@ export class Matchmaker {
       else l.forEach(e => send(e.ws, { t: 'queue', n: l.length, need }));
     }
   }
-  match(grp, gm, fill, stake = 0) {
-    const room = code();
+  match(grp, gm, fill, stake = 0, forRoom = '') {
+    const room = forRoom || code();
     grp.forEach(e => {
       this.q = this.q.filter(x => x !== e);
       send(e.ws, { t: 'matched', room, gm, fill: fill ? 1 : 0, stake });

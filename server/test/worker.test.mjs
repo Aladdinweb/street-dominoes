@@ -1,15 +1,15 @@
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import { fileURLToPath, pathToFileURL } from 'node:url';
 // Regression suite for server/src/worker.js (real GameRoom / Matchmaker code, fake KV + Durable Object storage). Run: node server/test/worker.test.mjs
 const here = path.dirname(fileURLToPath(import.meta.url)), tmp = path.join(process.env.TMPDIR || os.tmpdir(), 'sd-worker-under-test.mjs');
-fs.copyFileSync(path.join(here, '../src/worker.js'), tmp);
+fs.copyFileSync(process.env.WORKER_SRC || path.join(here, '../src/worker.js'), tmp);
 const W = await import(pathToFileURL(tmp).href);
 const { GameRoom, Matchmaker, CFG, LB, isoWeek } = W; const api = null;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, v) => R.push((v ? 'PASS ' : 'FAIL ') + n);
 CFG.DEAL = 1; CFG.NEXT = 1; CFG.BOT = [1, 1]; CFG.DRAW = 1; CFG.TURN = 600000; CFG.GRACE = 600000;
 // ---- fakes
-const kv = new Map(); const PLAYER_STATS = { get: async (k, t) => (kv.has(k) ? JSON.parse(kv.get(k)) : null), put: async (k, v) => { kv.set(k, v) } };
-const mkState = () => { const m = new Map(); return { storage: { list: async ({ prefix }) => new Map([...m].filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k, JSON.parse(JSON.stringify(v))])), put: async o => { for (const [k, v] of Object.entries(o)) m.set(k, JSON.parse(JSON.stringify(v))) }, get: async k => m.get(k) } } };
+const kv = new Map(); let puts = 0; const PLAYER_STATS = { get: async (k, t) => (kv.has(k) ? JSON.parse(kv.get(k)) : null), put: async (k, v) => { puts++; kv.set(k, v) }, delete: async k => { kv.delete(k) } };
+const mkState = () => { const m = new Map(), socks = []; return { socks, acceptWebSocket(ws) { socks.push(ws) }, getWebSockets() { return socks.filter(s => !s.closed) }, setWebSocketAutoResponse() {}, storage: { list: async ({ prefix }) => new Map([...m].filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k, JSON.parse(JSON.stringify(v))])), put: async o => { for (const [k, v] of Object.entries(o)) m.set(k, JSON.parse(JSON.stringify(v))) }, get: async k => m.get(k) } } };
 const insts = {}; const MATCH = { idFromName: n => n, get: id => ({ fetch: (u, init) => (insts[id] = insts[id] || new Matchmaker(mkState(), {})).fetch(new Request(u, init)) }) };
 const env = { PLAYER_STATS, MATCH };
 const J = async (r) => ({ s: r.status, j: await r.json() });
@@ -106,5 +106,179 @@ const A = 'usr_aaaa11', B = 'usr_bbbb22', C = 'usr_cccc33', D = 'usr_dddd44';
   const lob = c1.seats[0].ws.msgs.find(m => m.t === 'olobby');
   ok('lobby message shows the entry fee to everyone before the match starts', lob && lob.stake === 500);
   globalThis.Response = R0; globalThis.WebSocketPair = WP0;
+
+  { // =================== v1.3.1 ===================
+  const oldFetch = globalThis.fetch;
+  const nodeCrypto = (await import('node:crypto')).default;
+  // ---- speed mode: timer + auto play / auto pass
+  r = mkRoom('1v1', [{ pid: 'usr_t1aaaa', name: 'T1' }, { pid: 'usr_t2bbbb', name: 'T2' }]); r.cfg.turn = 10; r.cfg.auto = 'pass';
+  r.startNow(); for (let i = 0; i < 200 && (r.phase !== 'play' || r.dealing); i++) await sleep(2);
+  let cp = r.cur;
+  ok('turn timer: 10 s chosen by the host is used for human turns', r.turnMs() === 10000 && r.view(cp).tt === 10000 && r.view(cp).tl > 8000 && r.view(cp).tl <= 10000 && r.view(cp).turn === 10 && r.view(cp).auto === 'pass');
+  let hn = r.hands[cp].length; r.cfg.auto = 'play'; r.timeout();
+  ok('Auto Play: on timeout the server plays a tile for you', r.hands[cp].length === hn - 1);
+  r.dispose();
+  r = mkRoom('1v1', [{ pid: 'usr_t1aaaa', name: 'T1' }, { pid: 'usr_t2bbbb', name: 'T2' }]); r.cfg.turn = 10; r.cfg.auto = 'pass';
+  r.startNow(); for (let i = 0; i < 200 && (r.phase !== 'play' || r.dealing); i++) await sleep(2);
+  cp = r.cur; hn = r.hands[cp].length; const psId = r.ps ? r.ps.id : 0;
+  r.timeout();
+  ok('Auto Pass: with a playable tile the turn is skipped (no tile placed, "passed" badge sent, blocked-counter reset)', r.hands[cp].length === hn && r.cur !== cp && r.ps && r.ps.id > psId && r.passes === 0 && r.seats[cp].to === 1);
+  for (let k = 0; k < 2; k++) { r.cur = cp; r.timeout(); }
+  ok('3 timeouts in a row switch the seat to auto-play (no stalled table)', r.seats[cp].auto === true);
+  r.cur = cp; hn = r.hands[cp].length; r.timeout();
+  ok('after that the seat is auto-played on timeout', r.hands[cp].length === hn - 1);
+  r.human(cp); ok('a human move clears the timeout streak', r.seats[cp].to === 0 && !r.seats[cp].auto);
+  // nothing playable: draw like a human has to
+  r.chain = [{ a: 6, b: 6 }]; r.ci = 0; r.cur = cp; r.hands[cp] = [[0, 1], [2, 3]]; r.seats[cp].auto = false; r.phase = 'play'; r.over = -1; r.dealing = false;
+  hn = r.hands[cp].length; r.timeout();
+  ok('Auto Pass with nothing playable: draws from the boneyard instead of skipping', r.hands[cp].length === hn + 1);
+  r.dispose();
+  // ---- config parsing through the real connection path
+  const WP1 = globalThis.WebSocketPair, R1 = globalThis.Response;
+  globalThis.Response = function (b, i) { this.status = i && i.status; this.webSocket = i && i.webSocket };
+  globalThis.WebSocketPair = function () { const w = mkws(); this[0] = {}; this[1] = Object.assign(w, { accept() {} }); };
+  const conn2 = async (qs, code = 'QWERT') => { const room = new GameRoom({}, env); await room.fetch(new Request('https://x/ws?room=' + code + '&' + qs + '&pid=usr_hostx1&name=Host&av=0')); return room; };
+  let d1 = await conn2('create=1&gm=1v1&turn=15&auto=pass'), d2 = await conn2('create=1&gm=1v1&turn=17&auto=boom'), d3 = await conn2('create=1&gm=2v2&type=tvt&res=2:usr_aaaa22,1:usr_bbbb33,3:usr_cccc44,0:usr_evil99');
+  ok('room config: timer 15 + auto pass accepted; 17 / unknown mode fall back to standard / play', d1.cfg.turn === 15 && d1.cfg.auto === 'pass' && d2.cfg.turn === 0 && d2.cfg.auto === 'play' && d2.turnMs() === CFG.TURN);
+  ok('reservations: three friend seats accepted, seat 0 (host) cannot be reserved', JSON.stringify(d3.cfg.res) === JSON.stringify({ 1: 'usr_bbbb33', 2: 'usr_aaaa22', 3: 'usr_cccc44' }) && d3.cfg.type === 'tvt');
+  const l0 = d1.seats[0].ws.msgs.find(m => m.t === 'olobby'); ok('lobby shows timer and auto mode to everyone', l0 && l0.turn === 15 && l0.auto === 'pass');
+  [d1, d2, d3].forEach(x => x.dispose());
+  // ---- seat reservations
+  const att = (room, pid) => { const ws = mkws(); room.attach(ws, pid, pid.slice(4), 1); return ws; };
+  const mk2 = res => { const x = new GameRoom({}, env); x.code = 'RESV1'; x.cfg = { gm: '2v2', target: 100, fill: false, host: 'usr_hostx1', stake: 0, turn: 0, auto: 'play', type: 'partner', seek: false, res }; return x; };
+  let rv = mk2({ 2: 'usr_frnd22' }); att(rv, 'usr_hostx1'); const sa = att(rv, 'usr_rand111'); const sb = att(rv, 'usr_rand222'); const sc = att(rv, 'usr_rand333');
+  ok('partner room: strangers take seats 1 and 3, seat 2 stays reserved (3rd stranger is told the room is full)', rv.seats[1] && rv.seats[3] && !rv.seats[2] && sc.msgs.some(m => m.t === 'err' && m.m === 'full'));
+  att(rv, 'usr_frnd22'); ok('the invited friend gets the reserved seat 2 (his partner)', rv.seats[2] && rv.seats[2].pid === 'usr_frnd22' && rv.seats[0].pid === 'usr_hostx1');
+  rv.dispose();
+  rv = mk2({ 2: 'usr_frnd22', 1: 'usr_frnd33', 3: 'usr_frnd44' }); att(rv, 'usr_hostx1'); const se = att(rv, 'usr_rand111');
+  ok('team-vs-team room: uninvited players cannot join', se.msgs.some(m => m.t === 'err' && m.m === 'full'));
+  const lb0 = rv.seats[0].ws.msgs.filter(m => m.t === 'olobby').pop(); ok('lobby tells the host which invited seats are still empty', lb0 && JSON.stringify(lb0.wait) === '[1,2,3]');
+  att(rv, 'usr_frnd44'); att(rv, 'usr_frnd33'); att(rv, 'usr_frnd22');
+  ok('team-vs-team: each friend sits in his reserved seat (A with you, B and C together)', rv.seats[2].pid === 'usr_frnd22' && rv.seats[1].pid === 'usr_frnd33' && rv.seats[3].pid === 'usr_frnd44' && tmSame(rv));
+  function tmSame(x) { return [0, 2].every(i => i % 2 === 0) && [1, 3].every(i => i % 2 === 1); }
+  rv.dispose();
+  // ---- "You + Friend vs 2 randoms": the room asks the matchmaker for two random opponents with the same entry fee
+  const sk = await conn2('create=1&gm=2v2&stake=500&seek=1&type=partner&res=2:usr_frnd22', 'SEEK1'); await sleep(20);
+  const mmI = insts.mm; ok('seek: the room registered a request for 2 randoms at its stake', mmI && mmI.reqs.some(q => q.room === 'SEEK1' && q.stake === 500 && q.need === 2));
+  const qq = (stake) => { const w = mkws(); mmI.q.push({ ws: w, gm: '2v2', stake, since: Date.now() }); return w; };
+  const s1k = qq(0), s2k = qq(500); mmI.tick();
+  ok('seek: a random with a different fee is not sent to the room', !s1k.msgs.some(m => m.t === 'matched' && m.room === 'SEEK1'));
+  const s3k = qq(500); mmI.tick();
+  ok('seek: two randoms with the same fee are sent to the host room (not a new room)', [s2k, s3k].every(w => w.msgs.some(m => m.t === 'matched' && m.room === 'SEEK1' && m.stake === 500)) && !mmI.reqs.some(q => q.room === 'SEEK1'));
+  const sk2 = await conn2('create=1&gm=2v2&seek=1&type=partner&res=2:usr_frnd22', 'SEEK2'); await sleep(20);
+  sk2.startNow(); await sleep(20); ok('starting the match (bots fill) cancels the search for randoms', !mmI.reqs.some(q => q.room === 'SEEK2'));
+  [sk, sk2].forEach(x => x.dispose()); clearInterval(mmI.iv);
+  globalThis.Response = R1; globalThis.WebSocketPair = WP1;
+  // ---- presence (hibernatable WebSockets)
+  class FWS { constructor() { this.msgs = []; this.att = null; this.closed = false } accept() {} send(s) { this.msgs.push(JSON.parse(s)) } close() { this.closed = true } serializeAttachment(a) { this.att = JSON.parse(JSON.stringify(a)); if (JSON.stringify(a).length > 2048) throw new Error('attachment too large') } deserializeAttachment() { return this.att ? JSON.parse(JSON.stringify(this.att)) : null } }
+  let lastPair = null; globalThis.WebSocketPair = function () { const w = new FWS(); lastPair = w; this[0] = {}; this[1] = w; }; globalThis.WebSocketRequestResponsePair = function (a, b) { this.a = a; this.b = b };
+  globalThis.Response = function (b, i) { this.status = i && i.status; this.webSocket = i && i.webSocket };
+  const pr = new Matchmaker(mkState(), {}); const conP = id => { pr.presenceAccept(new Request('https://x/ws?presence=1&pid=' + id)); return lastPair; };
+  const PA = 'usr_pa1111', PB = 'usr_pb2222', PC = 'usr_pc3333';
+  const wA = conP(PA), wB = conP(PB);
+  await pr.webSocketMessage(wB, JSON.stringify({ t: 'watch', ids: [PA, PC, 'bad id'] }));
+  let snap = wB.msgs.find(m => m.t === 'pres' && m.all);
+  ok('presence: watching friends returns their current status (A online=1, C offline=0, invalid ids ignored)', snap && snap.all[PA] === 1 && snap.all[PC] === 0 && Object.keys(snap.all).length === 2);
+  await pr.webSocketMessage(wA, JSON.stringify({ t: 'st', s: 2 }));
+  ok('presence: friend starts a game -> watcher is told immediately (in-game=2)', wB.msgs.some(m => m.t === 'pres' && m.id === PA && m.s === 2));
+  const wC = conP(PC); ok('presence: friend comes online -> watcher is told (online=1)', wB.msgs.some(m => m.t === 'pres' && m.id === PC && m.s === 1));
+  const wA2 = conP(PA); await pr.webSocketClose(wA2);
+  ok('presence: a second device of the same player disconnecting does not make him offline', !wB.msgs.filter(m => m.id === PA).some(m => m.s === 0));
+  await pr.webSocketClose(wA);
+  ok('presence: last socket closes -> watcher is told offline (0)', wB.msgs.filter(m => m.id === PA).pop().s === 0);
+  ok('presence: players are not told about themselves / non-watchers get nothing', !wA.msgs.some(m => m.t === 'pres' && m.id === PA) && !wC.msgs.some(m => m.t === 'pres'));
+  conP(PA); conP(PA); conP(PA); const w4 = conP(PA); ok('presence: max 3 sockets per player (4th is refused)', w4.msgs.some(m => m.t === 'err') && w4.closed);
+  const wBad = conP('nope'); ok('presence: invalid player ids are refused', wBad.msgs.some(m => m.t === 'err'));
+  await pr.webSocketMessage(wB, JSON.stringify({ t: 'watch', ids: Array.from({ length: 80 }, (_, i) => 'usr_x' + String(i).padStart(4, '0')) }));
+  ok('presence: watch list is capped at 40 (fits the 2 KB attachment limit)', wB.deserializeAttachment().w.length === 40);
+  const n0 = wB.msgs.length; await pr.webSocketMessage(wB, 'x'.repeat(5000)); await pr.webSocketMessage(wB, 'not json'); ok('presence: oversized / non-JSON messages are ignored', wB.msgs.length === n0);
+  globalThis.WebSocketPair = WP1; globalThis.Response = R1;
+  // ---- invites + FCM push (/api/invite, /api/push-token)
+  insts.pr = pr;                                       // the Worker reaches presence through env.MATCH 'pr'
+  const { privateKey, publicKey } = nodeCrypto.generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
+  const SA = JSON.stringify({ client_email: 'sd@street-dominoes.iam.gserviceaccount.com', private_key: privateKey, project_id: 'street-dominoes' });
+  let oauth = 0, fcm = [], jwtOk = false;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).startsWith('https://oauth2.googleapis.com/token')) {
+      oauth++; const jwt = new URLSearchParams(init.body).get('assertion'), [h, c, s] = jwt.split('.');
+      const claim = JSON.parse(Buffer.from(c, 'base64url').toString()); jwtOk = nodeCrypto.verify('RSA-SHA256', Buffer.from(h + '.' + c), publicKey, Buffer.from(s, 'base64url')) && claim.scope.includes('firebase.messaging') && claim.iss.startsWith('sd@') && claim.exp > claim.iat;
+      return new Response(JSON.stringify({ access_token: 'AT-' + oauth, expires_in: 3600 }), { status: 200 });
+    }
+    if (String(url).includes('fcm.googleapis.com')) {
+      const b = JSON.parse(init.body); fcm.push({ url: String(url), auth: init.headers.authorization, msg: b.message });
+      if (b.message.token.includes('GONE')) return new Response('{"error":{"status":"NOT_FOUND"}}', { status: 404 });
+      if (b.message.token.includes('FAIL')) return new Response('oops', { status: 500 });
+      return new Response('{"name":"ok"}', { status: 200 });
+    }
+    return oldFetch(url, init);
+  };
+  const post = (p, body, e = env) => worker.fetch(new Request('https://x' + p, { method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body) }), e);
+  const envF = { PLAYER_STATS, MATCH, FCM_SERVICE_ACCOUNT: SA };
+  const TOK = n => 'tok_' + n + '_'.padEnd(30, 'x');
+  for (const [id, tk] of [['usr_f2offln', [TOK('f2')]], ['usr_f4gone1', [TOK('GONE')]], ['usr_f5mixed', [TOK('GONE'), TOK('good')]]]) await J(await post('/api/push-token', { playerId: id, token: tk[0] }, envF)), tk[1] && await J(await post('/api/push-token', { playerId: id, token: tk[1] }, envF));
+  const F1 = 'usr_f1onlin'; const wF1 = (() => { globalThis.WebSocketPair = function () { const w = new FWS(); lastPair = w; this[0] = {}; this[1] = w }; globalThis.Response = function (b, i) { this.status = i && i.status; this.webSocket = i && i.webSocket }; pr.presenceAccept(new Request('https://x/ws?presence=1&pid=' + F1)); const w = lastPair; globalThis.WebSocketPair = WP1; globalThis.Response = R1; return w })();
+  let ir = await J(await post('/api/invite', { from: 'usr_sendr01', name: 'Karim', av: 2, to: [F1, 'usr_f2offln', 'usr_f3notok'], kind: 'invite', room: 'abcde', gm: '2v2', type: 'partner', stake: 500, turn: 15 }, envF));
+  ok('invite: online friend gets it in-app, offline friend with a device gets a push, offline friend without a device is reported', ir.s === 200 && ir.j.delivered.join() === F1 && ir.j.pushed.join() === 'usr_f2offln' && ir.j.offline.join() === 'usr_f3notok' && ir.j.push === true);
+  if (process.env.DBG) console.log('DBG first invite =>', JSON.stringify(ir), 'fcm calls', fcm.length, 'oauth', oauth);
+  const iv = wF1.msgs.find(m => m.t === 'inv'); ok('invite: in-app message carries room, type, fee and timer', iv && iv.room === 'ABCDE' && iv.type === 'partner' && iv.stake === 500 && iv.turn === 15 && iv.name === 'Karim' && iv.from === 'usr_sendr01');
+  const pm = fcm[0]; ok('push: FCM v1 request is authenticated, targets the token and carries the room for the tap', pm.url.includes('/projects/street-dominoes/messages:send') && pm.auth === 'Bearer AT-1' && pm.msg.token === TOK('f2') && pm.msg.data.room === 'ABCDE' && pm.msg.data.kind === 'invite' && pm.msg.data.stake === '500' && /Karim/.test(pm.msg.notification.title) && pm.msg.android.priority === 'HIGH' && pm.msg.android.notification.channel_id === 'invites');
+  ok('push: service-account JWT is RS256-signed with the right scope', jwtOk === true);
+  ir = await J(await post('/api/invite', { from: 'usr_sendr01', to: [F1, 'usr_f2offln'], kind: 'invite', room: 'ABCDE', gm: '2v2' }, envF));
+  ok('invite: the same sender cannot re-invite the same player within 20 s', ir.j.limited.length === 2 && ir.j.delivered.length === 0);
+  ir = await J(await post('/api/invite', { from: 'usr_sendr02', name: 'Sam', to: ['usr_f4gone1', 'usr_f5mixed'], kind: 'ping', ping: '👋' }, envF));
+  ok('Street Ping: pushed to the device that is still valid; a dead token is dropped and the player reported as unreachable', ir.j.pushed.join() === 'usr_f5mixed' && ir.j.offline.join() === 'usr_f4gone1');
+  ok('push: invalid (404) tokens are removed from KV, valid ones kept', !kv.has('push:usr_f4gone1') && JSON.parse(kv.get('push:usr_f5mixed')).tokens.length === 1 && JSON.parse(kv.get('push:usr_f5mixed')).tokens[0] === TOK('good'));
+  const pingMsg = fcm.filter(x => x.msg.data.kind === 'ping').pop(); ok('Street Ping message', pingMsg && pingMsg.msg.notification.title.includes('👋') && pingMsg.msg.data.ping === '👋');
+  ir = await J(await post('/api/invite', { from: 'usr_sendr02', to: ['usr_f5mixed'], kind: 'ping', ping: '👋' }, envF)); ok('Street Ping cooldown: 60 s per pair', ir.j.limited.join() === 'usr_f5mixed');
+  ok('FCM access token is cached (one OAuth call for all of the above)', oauth === 1);
+  ok('invite validation: bad sender / no targets / bad room / bad ping / oversized body', (await post('/api/invite', { from: 'x', to: [F1], room: 'ABC' }, envF)).status === 400 && (await post('/api/invite', { from: 'usr_sendr03', to: [], room: 'ABC' }, envF)).status === 400 && (await post('/api/invite', { from: 'usr_sendr03', to: [F1], kind: 'invite', room: '!!' }, envF)).status === 400 && (await post('/api/invite', { from: 'usr_sendr03', to: [F1], kind: 'ping', ping: '💣' }, envF)).status === 400 && (await post('/api/invite', 'x'.repeat(3000), envF)).status === 413);
+  ir = await J(await post('/api/invite', { from: 'usr_sendr04', to: ['usr_f2offln'], kind: 'invite', room: 'ABCDE', gm: '1v1' }, { PLAYER_STATS, MATCH }));
+  ok('without the FCM secret: still works in-app, push reported as off, nobody crashes', ir.s === 200 && ir.j.push === false && ir.j.offline.join() === 'usr_f2offln' && ir.j.pushed.length === 0);
+  // push-token API
+  puts = 0; const T1 = TOK('reg1'); let tr = await J(await post('/api/push-token', { playerId: 'usr_regtok1', token: T1 }, envF)); const w1 = puts;
+  tr = await J(await post('/api/push-token', { playerId: 'usr_regtok1', token: T1 }, envF));
+  ok('push-token: registering the same token again does not write KV again', tr.j.n === 1 && puts === w1);
+  for (const n of ['b', 'c', 'd']) await post('/api/push-token', { playerId: 'usr_regtok1', token: TOK(n) }, envF);
+  ok('push-token: at most 3 devices per player, newest first', JSON.parse(kv.get('push:usr_regtok1')).tokens.length === 3 && JSON.parse(kv.get('push:usr_regtok1')).tokens[0] === TOK('d'));
+  await post('/api/push-token', { playerId: 'usr_regtok1', token: TOK('d'), remove: true }, envF); ok('push-token: remove', !JSON.parse(kv.get('push:usr_regtok1')).tokens.includes(TOK('d')));
+  ok('push-token validation', (await post('/api/push-token', { playerId: 'usr_regtok1', token: 'short' }, envF)).status === 400 && (await post('/api/push-token', { playerId: 'bad', token: TOK('z') }, envF)).status === 400);
+  globalThis.fetch = oldFetch;
+  // views expose the other players' ids (for "recent friends") and the timer
+  const rvw = mkRoom('1v1', [{ pid: A, name: 'Ann' }, { pid: B, name: 'Bob' }]); rvw.startNow(); await sleep(10);
+  ok('state view carries player ids (humans only) so the app can save recent opponents', JSON.stringify(rvw.view(0).pids) === JSON.stringify([A, null, B, null])); rvw.dispose();
+  }
+
+  // =================== v1.3.1b: relay credentials, names, chat ===================
+  { const oldF = globalThis.fetch; let upstream = 0, lastReq = null;
+    globalThis.fetch = async (url, init) => { if (String(url).startsWith('https://rtc.live.cloudflare.com/')) { upstream++; lastReq = { url: String(url), init }; return new Response(JSON.stringify({ iceServers: [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.cloudflare.com:53'] }, { urls: ['turn:turn.cloudflare.com:3478?transport=udp', 'turn:turn.cloudflare.com:53?transport=udp', 'turns:turn.cloudflare.com:443?transport=tcp'], username: 'u1', credential: 'c1' }] }), { status: 200 }); } return oldF(url, init); };
+    const get = (p, e) => worker.fetch(new Request('https://x' + p), e);
+    let tr = await J(await get('/api/turn', { PLAYER_STATS, MATCH }));
+    ok('relay: not configured -> 503 (the app falls back to STUN only)', tr.s === 503);
+    const envT = { PLAYER_STATS, MATCH, TURN_KEY_ID: 'KEY1', TURN_API_TOKEN: 'TOK1' };
+    tr = await J(await get('/api/turn', envT));
+    ok('relay: returns Cloudflare TURN servers with credentials, port-53 URLs removed (browsers time out on them)', tr.s === 200 && tr.j.iceServers.length === 2 && tr.j.iceServers.every(s => s.urls.every(u => !u.includes(':53'))) && tr.j.iceServers[1].username === 'u1' && tr.j.iceServers[1].credential === 'c1');
+    ok('relay: asks the generate-ice-servers endpoint with the bearer token and a 24 h ttl', lastReq.url.endsWith('/v1/turn/keys/KEY1/credentials/generate-ice-servers') && lastReq.init.headers.authorization === 'Bearer TOK1' && JSON.parse(lastReq.init.body).ttl === 86400);
+    await get('/api/turn', envT); await get('/api/turn', envT); ok('relay: credentials are cached (one upstream call for many players)', upstream === 1);
+    globalThis.fetch = oldF; }
+  { const r = mkRoom('2v2', [{ pid: 'usr_nm1111', name: 'ILINE' }]); const add = (pid, name) => { const ws = mkws(); r.attach(ws, pid, name, 1); return ws; };
+    add('usr_nm2222', 'ILINE'); add('usr_nm3333', 'iline'); add('usr_nm4444', 'Zed');
+    const v = r.view(0).names;
+    ok('names: players with the same name get numbered in the room view (ILINE, ILINE 2, iline 3, Zed)', v[0] === 'ILINE' && v[1] === 'ILINE 2' && v[2] === 'iline 3' && v[3] === 'Zed');
+    ok('names: the profile / leaderboard name is NOT changed by the numbering', r.seats[1].name === 'ILINE' && r.seats[1].dn === 'ILINE 2');
+    ok('names: lobby list uses the same unique names', r.seats[1].dn === 'ILINE 2'); r.dispose(); }
+  { const r = mkRoom('1v1', [{ pid: 'usr_ch1111', name: 'Ann' }, { pid: 'usr_ch2222', name: 'Bob' }]); const w0 = r.seats[0].ws, w2 = r.seats[2].ws;
+    const msg = (seat, o) => r.onMsg(seat, r.seats[seat].ws, JSON.stringify(o));
+    const got = (w, f) => w.msgs.filter(m => m.t === 'rx' && f(m));
+    ok('chat: cleanChat strips links, tags and control characters and caps the length', W.cleanChat('hi <b>x</b>\n https://evil.com/a www.spam.io ok') === 'hi b x /b … … ok' && W.cleanChat('x'.repeat(200)).length === 60 && W.cleanChat('   ') === '' && W.cleanChat(5) === '5');
+    msg(0, { t: 'rx', k: 'txt', x: 'Salam  <b>khoya</b> 👋' });
+    ok('chat: a free-text message is sent to every player in the room with the sender seat', got(w0, m => m.k === 'txt' && m.p === 0 && m.x === 'Salam b khoya /b 👋').length === 1 && got(w2, m => m.k === 'txt' && m.p === 0).length === 1);
+    msg(0, { t: 'rx', k: 'txt', x: 'second right away' });
+    ok('chat: flood protection (1 free-text message per 1.5 s per player)', got(w2, m => m.k === 'txt').length === 1);
+    r.seats[0].rx = Date.now() - 2000; msg(0, { t: 'rx', k: 'txt', x: 'later is fine' });
+    ok('chat: next message after the cooldown goes through', got(w2, m => m.k === 'txt').length === 2);
+    r.seats[2].rx = 0; msg(2, { t: 'rx', k: 'txt', x: '   ' }); msg(2, { t: 'rx', k: 'txt', x: 12345 }); msg(2, { t: 'rx', k: 'nope', x: 'x' });
+    ok('chat: empty, non-text and unknown kinds are ignored', got(w0, m => m.p === 2).length === 0);
+    msg(2, { t: 'rx', k: '🔥' }); ok('chat: the existing emoji / phrase quick messages still work', got(w0, m => m.k === '🔥' && m.p === 2).length === 1);
+    r.dispose(); }
   console.log(R.join('\n')); console.log(R.filter(x => x.startsWith('FAIL')).length ? 'SERVER TESTS FAILED' : 'server tests: all ' + R.length + ' passed'); process.exit(R.some(x => x.startsWith('FAIL')) ? 1 : 0);
 })();
