@@ -1,4 +1,4 @@
-# Street Dominoes - project state (v1.3.1)
+# Street Dominoes - project state (v1.3.2)
 
 > Long-term plan and phases: see [ROADMAP.md](ROADMAP.md). Update both files when a feature ships.
 
@@ -107,3 +107,11 @@ Superseded by [ROADMAP.md](ROADMAP.md) (phases 1-5).
 - App identity: `ME` / `myName()` / `myAv()` / `syncMe()` / `restoreMe()` (key `dm_me`); `saveSet()` writes the profile names from `net.bk` while connected as a client; default `Guest_XXXX`.
 - App social: `Pres` (presence socket), `recents()` / `saveRecents()` (`dm_recent`), friends window `openFr()` (invite sheet, Street Ping), `showInvite()` / `joinInvite()` / `sendInvites()`, `window.onPushOpen / onPushToken / onPushMsg` (inert without `Native.pushSupported()`), language button `setLangTo()`.
 - New storage keys: `dm_me`, `dm_recent`, `dm_ptok`, `dm_ptat`. Android FCM wiring is not in the repo yet (see ROADMAP.md).
+
+<!-- sd132 -->
+## 16. v1.3.2: optional modes, manual control, RTL, Android push
+- Room settings are all optional: `normSpeed(turn, auto)` (worker) returns `{turn, auto}`; no timer means `auto:'manual'`. `GameRoom.timed()` is true only for `turn > 0` with `auto` `play` / `pass`; `turnMs()` is `turn * 1000` when timed, else `CFG.IDLE` (2 min inactivity safety net, then `botStep()`). `view.tl` is 0 unless timed (the app only shows a countdown then). Quick-match queue keys are `gm|stake|turn|auto`; `matched` carries `stake`, `turn`, `auto`; `seek` requests carry them too.
+- App: `onlineType` (`casual` | `coins`), `onlineStake`, `onlineTurn`, `onlineAuto` (`manual` | `play` | `pass`), `speedOpen`; `modeHtml()` / `speedHtml()` / `lobbyOpts()`. Defaults: casual, 0, 0, manual, closed.
+- RTL: `render()` sets `document.documentElement.dir`; `#game{direction:ltr}` keeps the board physical; `.lgb` / `#lgp` use `inset-inline-start`.
+- Android (`app/src/main/java/com/iline/streetdominoes/`): `Push.kt` (`ready`, channel `invites`, token storage), `StreetMessagingService.kt` (`onNewToken`, foreground `onMessageReceived` -> `window.onPushMsg`), `MainActivity.kt` (`handleIntent` reads the tapped notification's extras -> `window.onPushOpen`, `fetchToken`, permission code 79, bridge `pushSupported` / `getPushToken` / `pushPermission` / `requestPushPermission`, callbacks `onPushToken` / `onPushPerm`). Gradle: root plugin `com.google.gms.google-services` 4.4.2 (apply false), app applies it only if `app/google-services.json` exists; `firebase-bom:33.1.2` + `firebase-messaging`. Manifest: `POST_NOTIFICATIONS`, service, default channel / icon (`res/drawable/ic_stat_domino.xml`), `launchMode=singleTop`. CI (`release.yml`) writes `app/google-services.json` from the `GOOGLE_SERVICES_B64` secret (optional).
+- FCM data keys: never use `from`, `message_type`, `google*`, `gcm*` (reserved); the sender id is `sid`.

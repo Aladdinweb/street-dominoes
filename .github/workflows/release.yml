@@ -31,6 +31,17 @@ jobs:
             keytool -genkeypair -keystore app/release.jks -alias street -keyalg RSA -keysize 2048 -validity 10000 -storepass streetdominoes -keypass streetdominoes -dname "CN=Street Dominoes, O=ILINE TECH"
             echo "::warning::No KEYSTORE_B64 secret - temporary key used. In-app updates will NOT install over this build."
           fi
+      - name: Firebase config (push notifications)
+        shell: bash
+        env:
+          GS_B64: ${{ secrets.GOOGLE_SERVICES_B64 }}
+        run: |
+          if [ -n "$GS_B64" ]; then
+            echo "$GS_B64" | base64 -d > app/google-services.json
+            echo "google-services.json written from the GOOGLE_SERVICES_B64 secret"
+          else
+            echo "::warning::GOOGLE_SERVICES_B64 secret not set - this APK is built without push notifications"
+          fi
       - name: Build APK
         env:
           KS_PASS: ${{ secrets.KS_PASS }}

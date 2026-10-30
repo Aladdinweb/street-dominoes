@@ -1,4 +1,5 @@
-// Street Dominoes - online server (Cloudflare Workers + Durable Objects + KV) - v1.3.1
+// Street Dominoes - online server (Cloudflare Workers + Durable Objects + KV) - v1.3.2
+// v1.3.2: manual control mode (default), speed settings optional and carried through Quick Match, FCM data keys fixed ("from" is reserved)
 // v1.3.1: speed mode (turn timer + auto play/pass), seat reservations for friend invites, presence (hibernating WebSockets), POST /api/invite + /api/push-token (FCM HTTP v1)
 // v1.3.0: server-recorded online results (rank points, profile stats), leaderboards (GET /api/leaderboard?scope=daily|weekly|global), match stakes in online rooms/quick match
 // WebSocket endpoint:  /ws?room=CODE | /ws?create=1&gm=1v1|2v2&target=100|200|300 | /ws?quick=1&gm=1v1|2v2
@@ -6,7 +7,7 @@
 // Profile API (KV binding PLAYER_STATS): GET /api/profile?playerId=usr_xxxxxx | POST /api/match-result (one write per finished match)
 // The server owns the canonical game state: it deals, validates every move and only sends each player their own hand.
 
-export const CFG = { GRACE: 30000, TURN: 45000, DEAL: 4300, NEXT: 9000, FILL: 3000, QFILL: 12000, BOT: [800, 500], DRAW: 500, RATE: 30, RTCRATE: 240 };
+export const CFG = { GRACE: 30000, TURN: 45000, IDLE: 120000, DEAL: 4300, NEXT: 9000, FILL: 3000, QFILL: 12000, BOT: [800, 500], DRAW: 500, RATE: 30, RTCRATE: 240 };
 const EMO = ['🤣', '😱', '😎', '👏', '😡', '🔥', '😭', '🤝'];
 const PHR = ['خفلة!', 'العب بسرعة!', 'ضربة معلّم!', 'برافو!', 'يا سلام!', 'استنى شوية!'];
 const ORDER = { '2v2': [0, 1, 2, 3], '1v1': [0, 2] };
@@ -24,7 +25,13 @@ export const API = { GAP: 3000, DAY_MAX: 150 };
 // Ranking: only matches the server saw itself change rank points (never the client-posted ones). Starts at 1000.
 export const LB = { WIN: 25, LOSS: -15, BLOCK: 5, BLOCKCAP: 10, MIN: 0, DAY_RATED: 40, MIN_ROUNDS: 2 };
 const STAKES = [0, 100, 500, 1000, 5000];
-const TURNS = [10, 15, 20, 30];                 // host-selectable turn timers (seconds); 0 = standard (CFG.TURN)
+const TURNS = [10, 15, 20, 30];                 // host-selectable turn timers (seconds); 0 = no time limit
+const AUTOS = ['manual', 'play', 'pass'];       // what happens when the timer runs out: manual = nothing is forced, play = server plays, pass = you lose the turn
+// speed settings are optional: no timer means manual control (the server only steps in after CFG.IDLE of total inactivity so a table never freezes)
+function normSpeed(turn, auto) {
+  const t = TURNS.includes(+turn) ? +turn : 0;
+  return { turn: t, auto: t && AUTOS.includes(auto) ? auto : 'manual' };
+}
 const TYPES = ['h2h', 'partner', 'tvt'];        // invite match types: 1v1 head-to-head, you + friend vs 2 randoms, you + friend vs 2 friends
 const PINGS = ['👋', '🔥', '🎲', '😎', '🤝'];    // "Street Ping" emojis
 // reserved seats for invited friends: "2:usr_a,1:usr_b,3:usr_c" (the host keeps seat 0; in 1v1 only seat 2 exists)
@@ -113,10 +120,10 @@ async function fcmSend(env, token, msg) {
 const TYPELBL = { h2h: 'Head-to-Head', partner: 'Teammate', tvt: 'Team vs Team' };
 function pushMsg(inv) {
   const ch = { channel_id: 'invites', tag: inv.kind + '-' + inv.from };
-  if (inv.kind === 'ping') return { notification: { title: inv.ping + ' ' + inv.name, body: 'wants to play Street Dominoes' }, data: { kind: 'ping', from: inv.from, name: inv.name, ping: inv.ping }, android: { priority: 'HIGH', ttl: '3600s', notification: ch } };
+  if (inv.kind === 'ping') return { notification: { title: inv.ping + ' ' + inv.name, body: 'wants to play Street Dominoes' }, data: { kind: 'ping', sid: inv.from, name: inv.name, ping: inv.ping }, android: { priority: 'HIGH', ttl: '3600s', notification: ch } };
   const body = (TYPELBL[inv.type] || inv.gm) + (inv.stake ? ' · 🪙 ' + inv.stake : '') + (inv.turn ? ' · ⏱ ' + inv.turn + 's' : '');
   return { notification: { title: '🎲 ' + inv.name + ' invited you', body }, android: { priority: 'HIGH', ttl: '120s', notification: ch },
-    data: { kind: 'invite', from: inv.from, name: inv.name, room: inv.room, gm: inv.gm, type: inv.type || '', stake: String(inv.stake | 0), turn: String(inv.turn | 0) } };
+    data: { kind: 'invite', sid: inv.from, name: inv.name, room: inv.room, gm: inv.gm, type: inv.type || '', stake: String(inv.stake | 0), turn: String(inv.turn | 0) } };
 }
 // POST /api/invite  {from,name,av,to:[ids],kind:'invite'|'ping', room,gm,type,stake,turn | ping}
 // Online friends get it over their presence socket; offline friends with a registered device get an FCM push.
@@ -270,7 +277,7 @@ export class GameRoom {
       if (!q.get('create') && !q.get('gm')) { this.err(ws, 'noroom'); return res(); }
       this.code = (q.get('room') || '').slice(0, 8);
       this.cfg = { gm: q.get('gm') === '1v1' ? '1v1' : '2v2', target: [100, 200, 300].includes(+q.get('target')) ? +q.get('target') : 200, fill: q.get('fill') === '1', host: pid, stake: STAKES.includes(+q.get('stake')) ? +q.get('stake') : 0,
-        turn: TURNS.includes(+q.get('turn')) ? +q.get('turn') : 0, auto: q.get('auto') === 'pass' ? 'pass' : 'play', type: TYPES.includes(q.get('type')) ? q.get('type') : '',
+        ...normSpeed(q.get('turn'), q.get('auto')), type: TYPES.includes(q.get('type')) ? q.get('type') : '',
         seek: q.get('seek') === '1', res: parseRes(q.get('res'), q.get('gm') === '1v1' ? '1v1' : '2v2', pid) };
     }
     this.attach(ws, pid, clean(q.get('name'), 12) || 'Player', Math.max(0, Math.min(11, parseInt(q.get('av')) || 0)));
@@ -296,7 +303,7 @@ export class GameRoom {
   async seek() {
     const env = this.env;
     if (!env || !env.MATCH) return;
-    try { await env.MATCH.get(env.MATCH.idFromName('mm')).fetch('https://mm.internal/_mm/seek', { method: 'POST', body: JSON.stringify({ room: this.code, stake: this.cfg.stake | 0, need: 2 }) }); } catch (e) {}
+    try { await env.MATCH.get(env.MATCH.idFromName('mm')).fetch('https://mm.internal/_mm/seek', { method: 'POST', body: JSON.stringify({ room: this.code, stake: this.cfg.stake | 0, turn: this.cfg.turn | 0, auto: this.cfg.auto, need: 2 }) }); } catch (e) {}
   }
   cancelSeek() {
     const env = this.env;
@@ -469,14 +476,15 @@ export class GameRoom {
     else { const ms = this.turnMs(); this.turnEnds = Date.now() + ms; this.after('turn', ms, () => this.timeout()); }   // human: timer (host-selected in speed mode)
   }
 
-  turnMs() { return (this.cfg.turn | 0) * 1000 || CFG.TURN; }
+  timed() { return (this.cfg.turn | 0) > 0 && this.cfg.auto !== 'manual'; }          // is a speed timer in force?
+  turnMs() { return this.timed() ? this.cfg.turn * 1000 : CFG.IDLE; }                // no timer: only the inactivity safety net
   // A human's turn timer ran out. "play": the server plays for them (bot logic). "pass": they lose the turn when they could have played
   // (nothing to play: draw / pass as usual). 3 timeouts in a row switch that seat to auto-play so the table never stalls.
   timeout() {
     this.clear('turn');
     const p = this.cur, s = this.seats[p];
     if (!s || !this.turnOk(p)) return;
-    if (s.bot || this.cfg.auto !== 'pass' || s.auto) return this.botStep();
+    if (s.bot || !this.timed() || this.cfg.auto !== 'pass' || s.auto) return this.botStep();   // no timer (manual): this is the 2-minute inactivity safety net
     s.to = (s.to || 0) + 1;
     if (s.to >= 3) s.auto = true;
     if (!this.playable(p).length) return this.botStep();
@@ -621,7 +629,7 @@ export class GameRoom {
       chain: this.chain, ci: this.ci, cur: this.cur, ps: this.ps, over: this.over, score: this.score, blocked: this.blocked, gain: this.gain,
       target: this.cfg.target, rid: this.rid, fo: this.fo, rk: this.rkres && this.rkres[p] ? this.rkres[p] : null,
       pids: [0, 1, 2, 3].map(i => { const x = this.seats[i]; return x && (!x.bot || x.fn) && validId(x.pid) ? x.pid : null; }),
-      tl: this.timers.turn && this.turnEnds ? Math.max(0, this.turnEnds - now) : 0, tt: this.turnMs(), turn: this.cfg.turn | 0, auto: this.cfg.auto,
+      tl: this.timed() && this.timers.turn && this.turnEnds ? Math.max(0, this.turnEnds - now) : 0, tt: this.turnMs(), turn: this.cfg.turn | 0, auto: this.cfg.auto,
       off: this.seats.map((s, i) => (s && !s.bot && s.off ? { p: i, s: Math.max(0, Math.ceil((s.off - now) / 1000)) } : null)).filter(Boolean),
     };
   }
@@ -659,7 +667,7 @@ export class Matchmaker {
     const q = new URL(req.url).searchParams;
     const pair = new WebSocketPair(), client = pair[0], ws = pair[1];
     ws.accept();
-    const e = { ws, gm: q.get('gm') === '1v1' ? '1v1' : '2v2', stake: STAKES.includes(+q.get('stake')) ? +q.get('stake') : 0, since: Date.now() };
+    const e = { ws, gm: q.get('gm') === '1v1' ? '1v1' : '2v2', stake: STAKES.includes(+q.get('stake')) ? +q.get('stake') : 0, ...normSpeed(q.get('turn'), q.get('auto')), since: Date.now() };
     this.q.push(e);
     const drop = () => { this.q = this.q.filter(x => x !== e); this.idle(); };
     ws.addEventListener('close', drop);
@@ -726,8 +734,8 @@ export class Matchmaker {
     const now = Date.now();
     this.reqs = this.reqs.filter(r => now - r.since < 90000);
     for (const r of [...this.reqs]) {
-      const l = this.q.filter(e => e.gm === '2v2' && e.stake === r.stake);
-      if (l.length >= r.need) { this.reqs = this.reqs.filter(x => x !== r); this.match(l.slice(0, r.need), '2v2', false, r.stake, r.room); }
+      const l = this.q.filter(e => e.gm === '2v2' && e.stake === r.stake && (e.turn | 0) === (r.turn | 0) && (e.auto || 'manual') === (r.auto || 'manual'));
+      if (l.length >= r.need) { this.reqs = this.reqs.filter(x => x !== r); this.match(l.slice(0, r.need), '2v2', false, r.stake, r.room, { turn: r.turn, auto: r.auto }); }
     }
   }
   async mmFetch(req, u) {
@@ -737,7 +745,7 @@ export class Matchmaker {
     if (!/^[A-Z0-9]{3,8}$/.test(room)) return J({ error: 'bad_room' }, 400);
     if (u.pathname === '/_mm/seek') {
       this.reqs = this.reqs.filter(r => r.room !== room);
-      this.reqs.push({ room, stake: STAKES.includes(b.stake | 0) ? b.stake | 0 : 0, need: Math.max(1, Math.min(2, b.need | 0 || 2)), since: Date.now() });
+      this.reqs.push({ room, ...normSpeed(b.turn, b.auto), stake: STAKES.includes(b.stake | 0) ? b.stake | 0 : 0, need: Math.max(1, Math.min(2, b.need | 0 || 2)), since: Date.now() });
       this.tick();
       return J({ ok: true });
     }
@@ -805,18 +813,19 @@ export class Matchmaker {
   idle() { if (!this.q.length && this.iv) { clearInterval(this.iv); this.iv = null; } }
   tick() {
     this.seekTick();
-    for (const gm of ['1v1', '2v2']) for (const st of STAKES) {   // players are only matched with others who chose the same entry fee
-      const need = gm === '1v1' ? 2 : 4, l = this.q.filter(e => e.gm === gm && e.stake === st);
-      if (l.length >= need) this.match(l.slice(0, need), gm, false, st);
-      else if (l.length && Date.now() - l[0].since >= CFG.QFILL) this.match(l, gm, true, st);   // fill the table with bots
+    const sk = e => e.gm + '|' + e.stake + '|' + (e.turn | 0) + '|' + (e.auto || 'manual');
+    for (const k of new Set(this.q.map(sk))) {   // players are only matched with others who chose the same game mode, entry fee and speed settings
+      const [gm, st, tu, au] = k.split('|'), need = gm === '1v1' ? 2 : 4, stake = +st, sp = { turn: +tu, auto: au }, l = this.q.filter(e => sk(e) === k);
+      if (l.length >= need) this.match(l.slice(0, need), gm, false, stake, '', sp);
+      else if (l.length && Date.now() - l[0].since >= CFG.QFILL) this.match(l, gm, true, stake, '', sp);   // fill the table with bots
       else l.forEach(e => send(e.ws, { t: 'queue', n: l.length, need }));
     }
   }
-  match(grp, gm, fill, stake = 0, forRoom = '') {
+  match(grp, gm, fill, stake = 0, forRoom = '', sp = {}) {
     const room = forRoom || code();
     grp.forEach(e => {
       this.q = this.q.filter(x => x !== e);
-      send(e.ws, { t: 'matched', room, gm, fill: fill ? 1 : 0, stake });
+      send(e.ws, { t: 'matched', room, gm, fill: fill ? 1 : 0, stake, turn: sp.turn | 0, auto: sp.auto || 'manual' });
       try { e.ws.close(1000, 'matched'); } catch (x) {}
     });
     this.idle();

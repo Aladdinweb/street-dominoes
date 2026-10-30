@@ -163,3 +163,13 @@ body{background:radial-gradient(circle at 50% -10%,#1d1d25,#08080b 70%) fixed;ov
 #fx .rx.tx{font-size:15px;white-space:normal;max-width:min(70vw,260px);text-align:center;direction:ltr;unicode-bidi:plaintext;padding:8px 12px;line-height:1.3;word-break:break-word}
 @media (prefers-reduced-motion:reduce){#lgp,#inb{animation:none}}
 /*sd131:end*/
+/*sd132:begin*/
+/* v1.3.2: logical (RTL-safe) header positions, board stays left-to-right */
+.lgb{left:auto;inset-inline-start:8px}
+#lgp{left:auto;inset-inline-start:8px}
+[dir=rtl] #lgp{transform-origin:top right}
+.top{padding-inline:2px}
+/* the dominoes board is physical (left player / right player / chain ends): never mirror it, whatever the language */
+#game{direction:ltr}
+@media (max-width:380px){#ti{font-size:21px;letter-spacing:1px}}
+/*sd132:end*/

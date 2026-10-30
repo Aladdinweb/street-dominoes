@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.2
+- Game modes optional: Casual Play (default) / Coin Match, speed settings (no time limit, 10-30 s) only when chosen; Quick Match carries them
+- Manual (full control) next to Auto Play / Auto Pass; 2-minute inactivity safety net
+- Arabic RTL: language button no longer collides with settings; board stays left-to-right
+- Android: native push notifications (Firebase Messaging) for invites and Street Pings
+- Fix: FCM data key "from" is reserved, sender is now "sid"
+
 ## 1.3.1
 - Speed mode: host-selected turn timer (10/15/20/30 s) with Auto Play / Auto Pass; countdown on the active HUD
 - Presence (online / in game / offline), recent players, match invites (1v1, teammate + 2 randoms, team vs team), Street Ping, POST /api/invite + /api/push-token (FCM, server side)

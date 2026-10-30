@@ -1,4 +1,6 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
+// Firebase (push notifications): only applied when the build has google-services.json, so the app also builds without it (push stays off)
+if (file("google-services.json").exists()) { apply(plugin = "com.google.gms.google-services") }
 fun env(k: String, d: String) = System.getenv(k)?.takeIf { it.isNotEmpty() } ?: d
 android {
     namespace = "com.iline.streetdominoes"
@@ -6,8 +8,8 @@ android {
     defaultConfig {
         applicationId = "com.iline.streetdominoes"
         minSdk = 26; targetSdk = 34
-        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 10301
-        versionName = (project.findProperty("versionName") as String?) ?: "1.3.1"
+        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 10302
+        versionName = (project.findProperty("versionName") as String?) ?: "1.3.2"
         buildConfigField("String", "REPO", "\"Aladdinweb/street-dominoes\"")
     }
     buildFeatures { buildConfig = true }
@@ -27,4 +29,6 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("org.java-websocket:Java-WebSocket:1.5.7")
+    implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
+    implementation("com.google.firebase:firebase-messaging")
 }

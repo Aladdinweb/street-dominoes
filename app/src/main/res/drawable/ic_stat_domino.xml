@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- notification icon: a white domino (Android only uses the shape, so it must be white on transparent) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M7,2 L17,2 A3,3 0 0 1 20,5 L20,19 A3,3 0 0 1 17,22 L7,22 A3,3 0 0 1 4,19 L4,5 A3,3 0 0 1 7,2 Z M6.5,11.25 L17.5,11.25 L17.5,12.75 L6.5,12.75 Z M12,5.6 A1.4,1.4 0 1 1 12,8.4 A1.4,1.4 0 1 1 12,5.6 Z M8.6,15.6 A1.4,1.4 0 1 1 8.6,18.4 A1.4,1.4 0 1 1 8.6,15.6 Z M15.4,15.6 A1.4,1.4 0 1 1 15.4,18.4 A1.4,1.4 0 1 1 15.4,15.6 Z" />
+</vector>

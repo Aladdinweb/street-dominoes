@@ -16,6 +16,9 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.content.FileProvider
+import android.os.Build
+import androidx.core.app.NotificationManagerCompat
+import com.google.firebase.messaging.FirebaseMessaging
 import org.java_websocket.WebSocket
 import org.java_websocket.client.WebSocketClient
 import org.java_websocket.handshake.ClientHandshake
@@ -36,6 +39,13 @@ class MainActivity : Activity() {
     private val counter = AtomicInteger(0)
     private var pendingMic: PermissionRequest? = null
     private var fileCb: ValueCallback<Array<Uri>>? = null   // pending <input type=file> request from the WebView
+    private var pageReady = false                 // the WebView finished loading (JS handlers exist)
+    private var pendingPush: String? = null           // invite / ping the user tapped in a notification, waiting for the page
+    @Volatile var isForeground = false
+
+    companion object {
+        @Volatile var current: MainActivity? = null   // used by StreetMessagingService to reach the page
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(b: Bundle?) {
@@ -44,7 +54,12 @@ class MainActivity : Activity() {
         web = WebView(this)
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
-        web.webViewClient = WebViewClient()
+        web.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                pageReady = true
+                deliverPush()
+            }
+        }
         web.settings.mediaPlaybackRequiresUserGesture = false   // remote voice must play without a tap
         web.webChromeClient = object : WebChromeClient() {
             // profile photo: let <input type="file" accept="image/*"> open the system picker (gallery / files, no storage permission needed)
@@ -80,6 +95,75 @@ class MainActivity : Activity() {
         web.addJavascriptInterface(Bridge(), "Native")
         setContentView(web)
         web.loadUrl("file:///android_asset/www/index.html")
+        // push notifications: channel, tap handling, device token
+        current = this
+        Push.ensureChannel(this)
+        handleIntent(intent)
+        fetchToken()
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        if (intent != null) setIntent(intent)
+        handleIntent(intent)
+    }
+
+    override fun onResume() { super.onResume(); isForeground = true }
+    override fun onPause() { isForeground = false; super.onPause() }
+
+    // ---- push notifications (Firebase Cloud Messaging; stays inactive when the build has no google-services.json) ----
+    private fun jsCall(fn: String, arg: String) = runOnUiThread { web.evaluateJavascript("window.$fn&&window.$fn($arg)", null) }
+    fun pushToJs(fn: String, json: String) = jsCall(fn, JSONObject.quote(json))
+    fun pushTokenChanged() = jsCall("onPushToken", "")
+
+    // a notification was tapped: its data arrives as intent extras
+    private fun handleIntent(i: Intent?) {
+        val e = i?.extras ?: return
+        val kind = e.getString("kind") ?: return
+        if (kind != "invite" && kind != "ping") return
+        val o = JSONObject()
+        for (k in arrayOf("kind", "sid", "name", "room", "gm", "type", "stake", "turn", "ping")) e.getString(k)?.let { o.put(k, it) }
+        pendingPush = o.toString()
+        setIntent(Intent(Intent.ACTION_MAIN))        // do not handle the same extras twice
+        if (pageReady) deliverPush()
+    }
+
+    private fun deliverPush() {
+        val p = pendingPush ?: return
+        pendingPush = null
+        pushToJs("onPushOpen", p)
+    }
+
+    private fun fetchToken() {
+        try {
+            if (!Push.ready(this)) return
+            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                if (task.isSuccessful) {                  // reading task.result on a failed task would throw
+                    val t = task.result
+                    if (!t.isNullOrEmpty()) { Push.saveToken(this, t); pushTokenChanged() }
+                }
+            }
+        } catch (_: Throwable) {}
+    }
+
+    private fun notificationsAllowed(): Boolean {
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
+        return NotificationManagerCompat.from(this).areNotificationsEnabled()
+    }
+
+    private fun askNotifPermission() {
+        if (!Push.ready(this)) { jsCall("onPushPerm", "false"); return }
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 79)
+            return
+        }
+        if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) {      // blocked in the phone settings: open them
+            try { startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)) } catch (_: Exception) {}
+            jsCall("onPushPerm", "false")
+            return
+        }
+        fetchToken()
+        jsCall("onPushPerm", "true")
     }
 
     @Suppress("DEPRECATION")
@@ -91,6 +175,12 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 79) {                      // notifications permission (Android 13+)
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            if (granted) fetchToken()
+            jsCall("onPushPerm", if (granted) "true" else "false")
+            return
+        }
         if (requestCode == 77) {
             val r = pendingMic; pendingMic = null
             if (r != null) {
@@ -112,6 +202,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        if (current === this) current = null
         try { server?.stop(100) } catch (_: Exception) {}
         try { client?.close() } catch (_: Exception) {}
         super.onDestroy()
@@ -139,6 +230,10 @@ class MainActivity : Activity() {
     inner class Bridge {
         @JavascriptInterface fun version(): String = BuildConfig.VERSION_NAME
         @JavascriptInterface fun supportsFilePicker(): Boolean = true
+        @JavascriptInterface fun pushSupported(): Boolean = Push.ready(applicationContext)
+        @JavascriptInterface fun getPushToken(): String = Push.token(applicationContext)
+        @JavascriptInterface fun pushPermission(): Boolean = notificationsAllowed()
+        @JavascriptInterface fun requestPushPermission() { runOnUiThread { askNotifPermission() } }
 
         // ---- LAN host ----
         @JavascriptInterface fun hostStart(port: Int): String {

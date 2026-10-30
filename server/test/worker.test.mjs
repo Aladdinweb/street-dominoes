@@ -6,7 +6,7 @@ const W = await import(pathToFileURL(tmp).href);
 const { GameRoom, Matchmaker, CFG, LB, isoWeek } = W; const api = null;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, v) => R.push((v ? 'PASS ' : 'FAIL ') + n);
-CFG.DEAL = 1; CFG.NEXT = 1; CFG.BOT = [1, 1]; CFG.DRAW = 1; CFG.TURN = 600000; CFG.GRACE = 600000;
+CFG.DEAL = 1; CFG.NEXT = 1; CFG.BOT = [1, 1]; CFG.DRAW = 1; CFG.TURN = 600000; CFG.IDLE = 600000; CFG.GRACE = 600000;
 // ---- fakes
 const kv = new Map(); let puts = 0; const PLAYER_STATS = { get: async (k, t) => (kv.has(k) ? JSON.parse(kv.get(k)) : null), put: async (k, v) => { puts++; kv.set(k, v) }, delete: async k => { kv.delete(k) } };
 const mkState = () => { const m = new Map(), socks = []; return { socks, acceptWebSocket(ws) { socks.push(ws) }, getWebSockets() { return socks.filter(s => !s.closed) }, setWebSocketAutoResponse() {}, storage: { list: async ({ prefix }) => new Map([...m].filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k, JSON.parse(JSON.stringify(v))])), put: async o => { for (const [k, v] of Object.entries(o)) m.set(k, JSON.parse(JSON.stringify(v))) }, get: async k => m.get(k) } } };
@@ -139,7 +139,7 @@ const A = 'usr_aaaa11', B = 'usr_bbbb22', C = 'usr_cccc33', D = 'usr_dddd44';
   globalThis.WebSocketPair = function () { const w = mkws(); this[0] = {}; this[1] = Object.assign(w, { accept() {} }); };
   const conn2 = async (qs, code = 'QWERT') => { const room = new GameRoom({}, env); await room.fetch(new Request('https://x/ws?room=' + code + '&' + qs + '&pid=usr_hostx1&name=Host&av=0')); return room; };
   let d1 = await conn2('create=1&gm=1v1&turn=15&auto=pass'), d2 = await conn2('create=1&gm=1v1&turn=17&auto=boom'), d3 = await conn2('create=1&gm=2v2&type=tvt&res=2:usr_aaaa22,1:usr_bbbb33,3:usr_cccc44,0:usr_evil99');
-  ok('room config: timer 15 + auto pass accepted; 17 / unknown mode fall back to standard / play', d1.cfg.turn === 15 && d1.cfg.auto === 'pass' && d2.cfg.turn === 0 && d2.cfg.auto === 'play' && d2.turnMs() === CFG.TURN);
+  ok('room config: timer 15 + auto pass accepted; 17 / unknown mode fall back to no timer / manual', d1.cfg.turn === 15 && d1.cfg.auto === 'pass' && d2.cfg.turn === 0 && d2.cfg.auto === 'manual' && d2.turnMs() === CFG.IDLE);
   ok('reservations: three friend seats accepted, seat 0 (host) cannot be reserved', JSON.stringify(d3.cfg.res) === JSON.stringify({ 1: 'usr_bbbb33', 2: 'usr_aaaa22', 3: 'usr_cccc44' }) && d3.cfg.type === 'tvt');
   const l0 = d1.seats[0].ws.msgs.find(m => m.t === 'olobby'); ok('lobby shows timer and auto mode to everyone', l0 && l0.turn === 15 && l0.auto === 'pass');
   [d1, d2, d3].forEach(x => x.dispose());
@@ -280,5 +280,54 @@ const A = 'usr_aaaa11', B = 'usr_bbbb22', C = 'usr_cccc33', D = 'usr_dddd44';
     ok('chat: empty, non-text and unknown kinds are ignored', got(w0, m => m.p === 2).length === 0);
     msg(2, { t: 'rx', k: '🔥' }); ok('chat: the existing emoji / phrase quick messages still work', got(w0, m => m.k === '🔥' && m.p === 2).length === 1);
     r.dispose(); }
+
+  // =================== v1.3.2: manual control, optional speed settings, quick match speed, FCM keys ===================
+  { const R2 = globalThis.Response, W2 = globalThis.WebSocketPair;
+    globalThis.Response = function (b, i) { this.status = i && i.status; this.webSocket = i && i.webSocket };
+    globalThis.WebSocketPair = function () { const w = mkws(); this[0] = {}; this[1] = Object.assign(w, { accept() {} }); };
+    const cn = async (qs, code = 'MAN01') => { const room = new GameRoom({}, env); await room.fetch(new Request('https://x/ws?room=' + code + '&' + qs + '&pid=usr_hostx9&name=Host&av=0')); return room; };
+    const m0 = await cn('create=1&gm=1v1'), m1 = await cn('create=1&gm=1v1&turn=20&auto=manual'), m2 = await cn('create=1&gm=1v1&auto=pass'), m3 = await cn('create=1&gm=1v1&turn=20&auto=play');
+    ok('defaults: nothing is forced (no timer, manual control) when the host picks no speed settings', m0.cfg.turn === 0 && m0.cfg.auto === 'manual' && !m0.timed() && m0.turnMs() === CFG.IDLE && m0.view(0).tl === 0);
+    ok('a timer with Manual control is allowed but never acts for the player (no countdown, only the inactivity safety net)', m1.cfg.turn === 20 && m1.cfg.auto === 'manual' && !m1.timed() && m1.view(0).tl === 0 && m1.turnMs() === CFG.IDLE);
+    ok('Auto Pass without a timer falls back to manual (a rule that needs a timer is ignored without one)', m2.cfg.turn === 0 && m2.cfg.auto === 'manual');
+    ok('Auto Play + 20 s is a timed room', m3.cfg.auto === 'play' && m3.timed() && m3.turnMs() === 20000);
+    const lobM = m1.seats[0].ws.msgs.find(m => m.t === 'olobby'); ok('lobby tells everyone the control mode', lobM && lobM.auto === 'manual' && lobM.turn === 20);
+    [m0, m1, m2, m3].forEach(x => x.dispose());
+    globalThis.Response = R2; globalThis.WebSocketPair = W2;
+    // manual: the idle safety net is the only thing that moves a stalled seat
+    const rm = mkRoom('1v1', [{ pid: 'usr_man111', name: 'M1' }, { pid: 'usr_man222', name: 'M2' }]); rm.cfg.turn = 15; rm.cfg.auto = 'manual';
+    rm.startNow(); for (let i = 0; i < 200 && (rm.phase !== 'play' || rm.dealing); i++) await sleep(2);
+    const pm = rm.cur, hn2 = rm.hands[pm].length; rm.timeout();
+    ok('manual control: only after the long inactivity safety does the server play for an idle player', rm.hands[pm].length === hn2 - 1 && rm.seats[pm].to === undefined);
+    rm.dispose();
+    // quick match: players are only paired with the same speed settings
+    const mmS = new Matchmaker(mkState(), {}); const qn = (turn, auto, stake = 0) => { const w = mkws(); mmS.q.push({ ws: w, gm: '1v1', stake, turn, auto, since: Date.now() }); return w; };
+    const a1 = qn(0, 'manual'), a2 = qn(15, 'pass'), a3 = qn(0, 'manual'), a4 = qn(15, 'play'), a5 = qn(15, 'pass'); mmS.tick();
+    const ma1 = a1.msgs.find(m => m.t === 'matched'), ma2 = a2.msgs.find(m => m.t === 'matched');
+    ok('quick match: same settings are paired (no timer with no timer; 15 s Auto Pass with 15 s Auto Pass), and the match carries them', ma1 && a3.msgs.some(m => m.t === 'matched' && m.room === ma1.room) && ma1.turn === 0 && ma1.auto === 'manual' && ma2 && a5.msgs.some(m => m.t === 'matched' && m.room === ma2.room) && ma2.turn === 15 && ma2.auto === 'pass' && ma1.room !== ma2.room);
+    ok('quick match: a different control mode (15 s Auto Play) keeps waiting instead of being forced into another rule set', !a4.msgs.some(m => m.t === 'matched') && a4.msgs.some(m => m.t === 'queue'));
+    clearInterval(mmS.iv);
+    // the room that searches for randoms passes its speed settings to the matchmaker
+    const R3 = globalThis.Response, WP3 = globalThis.WebSocketPair;
+    globalThis.Response = function (b, i) { this.status = i && i.status; this.webSocket = i && i.webSocket };
+    globalThis.WebSocketPair = function () { const w = mkws(); this[0] = {}; this[1] = Object.assign(w, { accept() {} }); };
+    const sk3 = new GameRoom({}, env); await sk3.fetch(new Request('https://x/ws?room=SPD01&create=1&gm=2v2&seek=1&turn=10&auto=pass&type=partner&res=2:usr_frnd22&pid=usr_hostx9&name=H')); await sleep(20);
+    ok('"you + friend vs 2 randoms" rooms with a timer only get randoms who chose the same speed settings', insts.mm.reqs.some(q => q.room === 'SPD01' && q.turn === 10 && q.auto === 'pass'));
+    const rqn = (turn, auto) => { const w = mkws(); insts.mm.q.push({ ws: w, gm: '2v2', stake: 0, turn, auto, since: Date.now() }); return w; };
+    const x1 = rqn(0, 'manual'), x2 = rqn(10, 'pass'); insts.mm.tick(); ok('seek: a random with different settings is not sent to the room', !x1.msgs.some(m => m.t === 'matched'));
+    const x3 = rqn(10, 'pass'); insts.mm.tick(); ok('seek: two randoms with the same settings join the room', [x2, x3].every(w => w.msgs.some(m => m.t === 'matched' && m.room === 'SPD01' && m.turn === 10 && m.auto === 'pass')));
+    sk3.dispose(); clearInterval(insts.mm.iv); globalThis.Response = R3; globalThis.WebSocketPair = WP3; }
+  { // FCM data payload must not use reserved keys (Firebase rejects "from", "message_type", "google*", "gcm*")
+    const reserved = k => k === 'from' || k === 'message_type' || k.startsWith('google') || k.startsWith('gcm');
+    const post = (p, body, e) => worker.fetch(new Request('https://x' + p, { method: 'POST', body: JSON.stringify(body) }), e);
+    const oldF2 = globalThis.fetch, sent2 = [];
+    const { privateKey: pk2 } = (await import('node:crypto')).default.generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
+    globalThis.fetch = async (url, init) => { if (String(url).includes('oauth2')) return new Response(JSON.stringify({ access_token: 'AT', expires_in: 3600 }), { status: 200 }); if (String(url).includes('fcm.googleapis.com')) { sent2.push(JSON.parse(init.body).message); return new Response('{}', { status: 200 }); } return oldF2(url, init); };
+    const envK = { PLAYER_STATS, MATCH, FCM_SERVICE_ACCOUNT: JSON.stringify({ client_email: 'x@y.iam.gserviceaccount.com', private_key: pk2, project_id: 'p' }) };
+    await post('/api/push-token', { playerId: 'usr_k1offln', token: 'tokK_' + 'x'.repeat(30) }, envK);
+    await post('/api/invite', { from: 'usr_senk001', name: 'S', to: ['usr_k1offln'], kind: 'invite', room: 'ABCDE', gm: '2v2' }, envK);
+    await post('/api/invite', { from: 'usr_senk002', name: 'S', to: ['usr_k1offln'], kind: 'ping', ping: '🔥' }, envK);
+    ok('FCM payloads: no reserved data keys (the sender is sent as "sid")', sent2.length === 2 && sent2.every(m => Object.keys(m.data).every(k => !reserved(k)) && Object.values(m.data).every(v => typeof v === 'string')) && sent2[0].data.sid === 'usr_senk001' && sent2[0].data.room === 'ABCDE' && sent2[0].data.kind === 'invite');
+    globalThis.fetch = oldF2; }
   console.log(R.join('\n')); console.log(R.filter(x => x.startsWith('FAIL')).length ? 'SERVER TESTS FAILED' : 'server tests: all ' + R.length + ' passed'); process.exit(R.some(x => x.startsWith('FAIL')) ? 1 : 0);
 })();
