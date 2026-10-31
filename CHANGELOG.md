@@ -127,3 +127,8 @@
 
 ## 1.0.0
 - First release: Street Dominoes, LAN play, in-app updates.
+
+## 1.3.3
+- Fix: friends window flicker (presence render loop), keyboard resize, bounded panel height.
+- Match invites keep ringing every 20 s for 3 minutes until accepted / declined (new `POST /api/invite-response`); Join / Decline on the notification.
+- FCM invites and pings are data-only high-priority messages rendered by `StreetMessagingService`.

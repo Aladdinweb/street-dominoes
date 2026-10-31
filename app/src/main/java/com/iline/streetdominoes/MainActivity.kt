@@ -51,6 +51,7 @@ class MainActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)   // v1.3.3: the keyboard shrinks the page instead of covering / panning it
         web = WebView(this)
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
@@ -122,7 +123,7 @@ class MainActivity : Activity() {
         val kind = e.getString("kind") ?: return
         if (kind != "invite" && kind != "ping") return
         val o = JSONObject()
-        for (k in arrayOf("kind", "sid", "name", "room", "gm", "type", "stake", "turn", "ping")) e.getString(k)?.let { o.put(k, it) }
+        for (k in arrayOf("kind", "sid", "name", "room", "gm", "type", "stake", "turn", "ping", "iid", "rid")) e.getString(k)?.let { o.put(k, it) }
         pendingPush = o.toString()
         setIntent(Intent(Intent.ACTION_MAIN))        // do not handle the same extras twice
         if (pageReady) deliverPush()

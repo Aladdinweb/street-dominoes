@@ -11,13 +11,23 @@ class StreetMessagingService : FirebaseMessagingService() {
         MainActivity.current?.pushTokenChanged()
     }
 
-    // Runs while the app is in the foreground. In the background the system shows the notification itself and
-    // delivers the data as intent extras when it is tapped (see MainActivity.handleIntent).
+    // v1.3.3: the server sends DATA-ONLY, high-priority messages, so this runs in every app state (foreground, background, killed).
+    // kind = invite | ping | cancel. App open: the page shows its own banner. Otherwise a system notification is built here.
     override fun onMessageReceived(message: RemoteMessage) {
         val d = message.data
         if (d.isEmpty()) return
-        val o = JSONObject()
-        for ((k, v) in d) o.put(k, v)
-        MainActivity.current?.pushToJs("onPushMsg", o.toString())
+        val kind = d["kind"] ?: return
+        val act = MainActivity.current
+        if (act != null && act.isForeground) {
+            val o = JSONObject()
+            for ((k, v) in d) o.put(k, v)
+            act.pushToJs("onPushMsg", o.toString())
+            if (kind == "cancel") Push.cancel(applicationContext, d["iid"])
+            return
+        }
+        when (kind) {
+            "cancel" -> Push.cancel(applicationContext, d["iid"])
+            "invite", "ping" -> Push.show(applicationContext, d)
+        }
     }
 }

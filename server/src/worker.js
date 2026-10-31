@@ -25,6 +25,7 @@ export const API = { GAP: 3000, DAY_MAX: 150 };
 // Ranking: only matches the server saw itself change rank points (never the client-posted ones). Starts at 1000.
 export const LB = { WIN: 25, LOSS: -15, BLOCK: 5, BLOCKCAP: 10, MIN: 0, DAY_RATED: 40, MIN_ROUNDS: 2 };
 const STAKES = [0, 100, 500, 1000, 5000];
+const RING = { TTL: 180000, EVERY: 20000 };     // v1.3.3: a match invite rings again every 20 s for 3 minutes unless it is answered
 const TURNS = [10, 15, 20, 30];                 // host-selectable turn timers (seconds); 0 = no time limit
 const AUTOS = ['manual', 'play', 'pass'];       // what happens when the timer runs out: manual = nothing is forced, play = server plays, pass = you lose the turn
 // speed settings are optional: no timer means manual control (the server only steps in after CFG.IDLE of total inactivity so a table never freezes)
@@ -118,12 +119,29 @@ async function fcmSend(env, token, msg) {
   } catch (e) { return 'fail'; }
 }
 const TYPELBL = { h2h: 'Head-to-Head', partner: 'Teammate', tvt: 'Team vs Team' };
+// v1.3.3: DATA-ONLY high-priority messages. With a `notification` block Android shows the message itself when the app is in the
+// background and never calls onMessageReceived, so it could not be repeated, cancelled or given a Decline button.
+// StreetMessagingService builds the notification on the device. `collapse_key` keeps only the newest ring (or the cancel) queued for a phone that is offline.
 function pushMsg(inv) {
-  const ch = { channel_id: 'invites', tag: inv.kind + '-' + inv.from };
-  if (inv.kind === 'ping') return { notification: { title: inv.ping + ' ' + inv.name, body: 'wants to play Street Dominoes' }, data: { kind: 'ping', sid: inv.from, name: inv.name, ping: inv.ping }, android: { priority: 'HIGH', ttl: '3600s', notification: ch } };
-  const body = (TYPELBL[inv.type] || inv.gm) + (inv.stake ? ' · 🪙 ' + inv.stake : '') + (inv.turn ? ' · ⏱ ' + inv.turn + 's' : '');
-  return { notification: { title: '🎲 ' + inv.name + ' invited you', body }, android: { priority: 'HIGH', ttl: '120s', notification: ch },
-    data: { kind: 'invite', sid: inv.from, name: inv.name, room: inv.room, gm: inv.gm, type: inv.type || '', stake: String(inv.stake | 0), turn: String(inv.turn | 0) } };
+  const d = { kind: inv.kind, sid: inv.from, name: inv.name };
+  if (inv.kind === 'ping') { d.ping = inv.ping; return { data: d, android: { priority: 'HIGH', ttl: '3600s' } }; }
+  Object.assign(d, { iid: inv.iid || '', rid: inv.rid || '', room: inv.room, gm: inv.gm, type: inv.type || '', stake: String(inv.stake | 0), turn: String(inv.turn | 0),
+    ttl: String(inv.ttl > 0 ? Math.floor(inv.ttl) : RING.TTL), rep: String(inv.rep | 0) });
+  return { data: d, android: { priority: 'HIGH', ttl: '60s', ...(inv.iid ? { collapse_key: 'inv_' + inv.iid } : {}) } };
+}
+const cancelMsg = iid => ({ data: { kind: 'cancel', iid }, android: { priority: 'HIGH', ttl: '60s', collapse_key: 'inv_' + iid } });
+const rid12 = () => b64u(crypto.getRandomValues(new Uint8Array(9)));
+// one FCM message to every registered device of a player; dead tokens are pruned; true when at least one device accepted it
+async function pushTo(env, id, msg) {
+  const rec = env.PLAYER_STATS ? await env.PLAYER_STATS.get('push:' + id, 'json') : null, tokens = (rec && rec.tokens) || [];
+  let okAny = false; const keep = [];
+  for (const t of tokens) {
+    const r = await fcmSend(env, t, msg);
+    if (r === 'ok') okAny = true;
+    if (r !== 'gone') keep.push(t);
+  }
+  if (keep.length !== tokens.length && env.PLAYER_STATS) { if (keep.length) await env.PLAYER_STATS.put('push:' + id, JSON.stringify({ tokens: keep, at: Date.now() }), { expirationTtl: 60 * 864e2 }); else await env.PLAYER_STATS.delete('push:' + id); }
+  return okAny;
 }
 // POST /api/invite  {from,name,av,to:[ids],kind:'invite'|'ping', room,gm,type,stake,turn | ping}
 // Online friends get it over their presence socket; offline friends with a registered device get an FCM push.
@@ -147,17 +165,22 @@ async function inviteApi(req, env) {
   if (!pr.ok) return json({ error: 'presence_unavailable' }, 502);
   const res = await pr.json(), pushed = [], noPush = [];
   for (const id of res.offline || []) {
-    const rec = env.PLAYER_STATS ? await env.PLAYER_STATS.get('push:' + id, 'json') : null, tokens = (rec && rec.tokens) || [];
-    let okAny = false; const keep = [];
-    for (const t of tokens) {
-      const r = await fcmSend(env, t, pushMsg(inv));
-      if (r === 'ok') okAny = true;
-      if (r !== 'gone') keep.push(t);
-    }
-    if (keep.length !== tokens.length && env.PLAYER_STATS) { if (keep.length) await env.PLAYER_STATS.put('push:' + id, JSON.stringify({ tokens: keep, at: Date.now() }), { expirationTtl: 60 * 864e2 }); else await env.PLAYER_STATS.delete('push:' + id); }
-    (okAny ? pushed : noPush).push(id);
+    const iid = (res.iids || {})[id];
+    const ok = await pushTo(env, id, pushMsg(iid ? { ...inv, iid, rid: id, ttl: RING.TTL } : inv));
+    (ok ? pushed : noPush).push(id);
   }
   return json({ ok: true, delivered: res.delivered || [], pushed, offline: noPush, limited: res.limited || [], push: !!(await fcmAccess(env)) });
+}
+// POST /api/invite-response {iid, pid, ok}: the invited player accepted (ok:1) or declined (ok:0); the iid is an unguessable 72-bit id and must belong to pid.
+// Used by the app (banner / notification tap) and by the notification's Decline button (InviteActionReceiver).
+async function inviteRespApi(req, env) {
+  const raw = await req.text();
+  if (raw.length > 512) return json({ error: 'too_large' }, 413);
+  let b; try { b = JSON.parse(raw); } catch (e) { return json({ error: 'bad_json' }, 400); }
+  if (!b || !validId(b.pid) || !/^[\w-]{12}$/.test(String(b.iid || ''))) return json({ error: 'bad_request' }, 400);
+  if (!env.MATCH) return json({ error: 'not_configured' }, 503);
+  const r = await env.MATCH.get(env.MATCH.idFromName('pr')).fetch('https://pr.internal/_pr/respond', { method: 'POST', body: JSON.stringify({ iid: b.iid, pid: b.pid, ok: b.ok ? 1 : 0 }) });
+  return json(await r.json(), r.ok ? 200 : 502);
 }
 // POST /api/push-token {playerId, token, remove?}: the Android app registers its FCM token (max 3 devices per player)
 async function pushTokenApi(req, env) {
@@ -186,6 +209,7 @@ async function api(req, env, url) {
   if (!env.PLAYER_STATS) return json({ error: 'kv_not_configured' }, 503);
   if (url.pathname === '/api/invite' && req.method === 'POST') return inviteApi(req, env);
   if (url.pathname === '/api/push-token' && req.method === 'POST') return pushTokenApi(req, env);
+  if (url.pathname === '/api/invite-response' && req.method === 'POST') return inviteRespApi(req, env);
   if (url.pathname === '/api/profile' && req.method === 'GET') {
     const id = url.searchParams.get('playerId');
     if (!validId(id)) return json({ error: 'bad_id' }, 400);
@@ -656,7 +680,7 @@ export class GameRoom {
 }
 
 export class Matchmaker {
-  constructor(state, env) { this.state = state; this.q = []; this.iv = null; this.reqs = []; }
+  constructor(state, env) { this.state = state; this.env = env; this.q = []; this.iv = null; this.reqs = []; }
   async fetch(req) {
     const lbu = new URL(req.url);
     if (lbu.pathname.startsWith('/_lb/')) return this.lbFetch(req, lbu);
@@ -785,12 +809,18 @@ export class Matchmaker {
       a.w = (Array.isArray(m.ids) ? m.ids : []).filter(validId).slice(0, 40); ws.serializeAttachment(a);
       const all = {}; for (const x of a.w) all[x] = this.presStatus(x);
       send(ws, { t: 'pres', all });
+      await this.resend(ws, a.id);
     }
   }
   webSocketClose(ws) { const a = ws.deserializeAttachment(); try { ws.close(1000, 'bye'); } catch (e) {} if (a) this.presNotify(a.id, ws); }
   webSocketError(ws) { const a = ws.deserializeAttachment(); if (a) this.presNotify(a.id, ws); }
   async prFetch(req, u) {
     const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
+    if (u.pathname === '/_pr/respond' && req.method === 'POST') {
+      let q; try { q = await req.json(); } catch (e) { return J({ error: 'bad_json' }, 400); }
+      const rec = await this.respond(String((q && q.iid) || ''), q && q.pid, !!(q && q.ok));
+      return J({ ok: !!rec });
+    }
     if (u.pathname !== '/_pr/invite' || req.method !== 'POST') return J({ error: 'not_found' }, 404);
     let b; try { b = await req.json(); } catch (e) { return J({ error: 'bad_json' }, 400); }
     const inv = b && b.inv, to = Array.isArray(b && b.to) ? b.to.slice(0, 3) : [];
@@ -799,16 +829,66 @@ export class Matchmaker {
     for (const [k, v] of this.rl) if (now - v.t > 600000) this.rl.delete(k);
     let sw = this.rl.get('s:' + inv.from);                      // at most 20 invites / pings per sender per 10 minutes
     if (!sw) { sw = { t: now, n: 0 }; this.rl.set('s:' + inv.from, sw); }
-    const out = { delivered: [], offline: [], limited: [] };
+    const out = { delivered: [], offline: [], limited: [], iids: {} };
     for (const id of to) {
       if (!validId(id)) continue;
       const pk = 'p:' + inv.from + ':' + id + ':' + inv.kind, last = this.rl.get(pk) || { t: 0 };
       if (sw.n >= 20 || now - last.t < (inv.kind === 'ping' ? 60000 : 20000)) { out.limited.push(id); continue; }
       sw.n++; this.rl.set(pk, { t: now });
       const socks = this.state.getWebSockets().filter(s => { const a = s.deserializeAttachment(); return a && a.id === id; });
-      if (socks.length) { socks.forEach(s => send(s, { t: 'inv', ...inv })); out.delivered.push(id); } else out.offline.push(id);
+      let rec = null;
+      if (inv.kind === 'invite') {                    // v1.3.3: an invite keeps ringing until it is answered or expires
+        rec = { iid: rid12(), to: id, exp: now + RING.TTL, n: 0, next: now + RING.EVERY };
+        rec.inv = { ...inv, iid: rec.iid };
+        await this.state.storage.put('inv:' + rec.iid, rec);
+        out.iids[id] = rec.iid;
+      }
+      const msg = rec ? { t: 'inv', ...rec.inv, rid: id, ttl: RING.TTL, rep: 0 } : { t: 'inv', ...inv };
+      if (socks.length) { socks.forEach(s => send(s, msg)); out.delivered.push(id); } else out.offline.push(id);
     }
+    await this.armAlarm();
     return J(out);
+  }
+  // ---- v1.3.3: persistent invites. Pending invites live in this instance's storage ('inv:<iid>'); a Durable Object alarm re-rings them.
+  toPlayer(id, o) { for (const s of this.state.getWebSockets()) { const a = s.deserializeAttachment(); if (a && a.id === id) send(s, o); } }
+  async respond(iid, pid, ok) {
+    const rec = await this.state.storage.get('inv:' + iid);
+    if (!rec || rec.to !== pid) return null;
+    await this.state.storage.delete('inv:' + iid);
+    this.toPlayer(rec.to, { t: 'invx', iid, ok: ok ? 1 : 0 });                       // stop the banner on the player's other open sockets
+    this.toPlayer(rec.inv.from, { t: 'invr', iid, id: rec.to, ok: ok ? 1 : 0 });    // tell the sender
+    await pushTo(this.env, rec.to, cancelMsg(iid));                                   // dismiss the notification on the player's devices
+    await this.armAlarm();
+    return rec;
+  }
+  async armAlarm() {
+    const st = this.state.storage;
+    if (typeof st.list !== 'function' || typeof st.setAlarm !== 'function') return;
+    let t = 0;
+    for (const [, r] of await st.list({ prefix: 'inv:' })) { const n = Math.min(r.next, r.exp); if (!t || n < t) t = n; }
+    if (t) await st.setAlarm(Math.max(t, Date.now() + 1000));
+  }
+  async alarm() {
+    const now = Date.now(), all = await this.state.storage.list({ prefix: 'inv:' });
+    for (const [k, r] of all) {
+      if (now >= r.exp) {                                                             // nobody answered: stop ringing everywhere
+        await this.state.storage.delete(k);
+        this.toPlayer(r.to, { t: 'invx', iid: r.iid, ok: 0, why: 'exp' });
+        this.toPlayer(r.inv.from, { t: 'invr', iid: r.iid, id: r.to, ok: 0, why: 'exp' });
+        await pushTo(this.env, r.to, cancelMsg(r.iid));
+        continue;
+      }
+      if (now < r.next) continue;
+      r.n++; r.next = now + RING.EVERY; await this.state.storage.put(k, r);
+      const msg = { ...r.inv, rid: r.to, rep: r.n, ttl: r.exp - now };
+      if (this.state.getWebSockets().some(s => (s.deserializeAttachment() || {}).id === r.to)) this.toPlayer(r.to, { t: 'inv', ...msg });   // app open: in-app banner
+      else await pushTo(this.env, r.to, pushMsg(msg));                                                                                      // app closed: push
+    }
+    await this.armAlarm();
+  }
+  async resend(ws, id) {                                                              // a player (re)connects: show the invites that are still ringing
+    const now = Date.now();
+    for (const [, r] of await this.state.storage.list({ prefix: 'inv:' })) if (r.to === id && r.exp > now) send(ws, { t: 'inv', ...r.inv, rid: id, ttl: r.exp - now, rep: r.n });
   }
   idle() { if (!this.q.length && this.iv) { clearInterval(this.iv); this.iv = null; } }
   tick() {

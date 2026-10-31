@@ -60,6 +60,15 @@ Implemented as additive patches to `server/src/worker.js`; rooms, matchmaking, v
 - [ ] GitHub secret `GOOGLE_SERVICES_B64` (base64 of `google-services.json`; the CI writes it before building, it is never committed) and Worker secret `FCM_SERVICE_ACCOUNT`; then test an invite to a phone whose app is closed.
 - [ ] Not compiled in the chat sandbox: the GitHub Actions APK build is the compile check for the Kotlin changes.
 
+## Update v1.3.3 - Friends window fix, persistent invites, data-only push
+
+- [x] **Fix:** friends & invites window flicker / freeze: a presence render loop (`openFr` -> `Pres.sync` -> `pres` reply -> `openFr`) is gone; presence updates repaint the status dots in place; bounded panel height + no nested `backdrop-filter`; the keyboard resizes the page.
+- [x] **Persistent invites:** an invite rings again every 20 s for up to 3 minutes (in-app banner or push) until the player joins or declines; declined / expired / accepted results are shown to the sender; a reconnecting player sees invites that are still ringing.
+- [x] **Push:** invites and pings are data-only, high-priority FCM messages rendered by `StreetMessagingService` (works with the app killed), with Join and Decline actions and cancel messages.
+- [ ] Not compiled in the chat sandbox: the GitHub Actions APK build is the compile check for the Kotlin changes. Real-phone test: kill the app, send an invite, let it ring twice, decline from the notification.
+- Limits: a Force Stop from Settings blocks all FCM until the app is opened again; some phone brands (Xiaomi, Huawei, Oppo...) also restrict background apps, so the user may need to allow auto-start / disable battery optimisation; whether the screen turns on for a heads-up notification is up to Android and the brand.
+
+
 ## Phase 2 - Monetization (AdMob and economy)
 
 AdMob needs the native Android SDK, so this means Kotlin work in `MainActivity.kt` plus a JS bridge. Check current AdMob / Play policies on ad placement and consent (EEA/UMP) before building.
