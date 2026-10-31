@@ -5,6 +5,7 @@ on:
     paths:
       - 'app/src/main/assets/www/**'
       - 'pages/**'
+      - 'landing/**'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 concurrency:
@@ -24,6 +25,9 @@ jobs:
           cp -r pages/. dist/                     # _headers, manifest, icons
           cp -r app/src/main/assets/www/. dist/   # game files win over any mirrored copy
           test -f dist/index.html
+          test -f landing/index.html
+          cp dist/index.html dist/play.html        # the game lives at /play (play.html)
+          cp landing/index.html dist/index.html    # the landing page lives at /
       - name: Deploy
         uses: cloudflare/wrangler-action@v3
         with:

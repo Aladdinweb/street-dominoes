@@ -539,7 +539,7 @@ if(net.client&&ol)return`<div class="lanb"><div class="rcode">${esc(ol.room)}</d
 if(net.client)return`<div class="lanb">${x.oConn}</div><button class="big alt" id="ox">${x.oCancel}</button>`;
 return`${modeHtml()}<button class="big" id="oq">⚡ ${x.oQuick}</button><button class="big alt" id="oc">➕ ${x.oCreate}</button><div class="lanb"><input id="orc" placeholder="${x.oCode}" maxlength="8" value="${esc(net.lastc||'')}"><button class="big" id="oj">${x.oJoin}</button><small>${esc(net.msg||'')}</small></div>`}
 /*sd126-invite*/
-const INVITE_BASE='https://street-dominoes.pages.dev/';
+const INVITE_BASE='https://street-dominoes.pages.dev/play';
 const inviteCode=()=>(net.ol&&net.ol.room)||(net.q&&net.q.room)||'';
 const inviteLink=c=>INVITE_BASE+'?room='+encodeURIComponent(c);
 function copyText(s){const fb=()=>{try{const a=document.createElement('textarea');a.value=s;a.setAttribute('readonly','');a.style.cssText='position:fixed;left:0;top:0;opacity:0';document.body.appendChild(a);a.select();a.setSelectionRange(0,s.length);const ok=document.execCommand('copy');a.remove();return ok}catch(e){return false}};

@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+# apply-landing.sh - Street Dominoes landing page: new home at /, game at /play (and play.html)
+#  - landing/index.html (outside app assets: the APK is untouched)
+#  - deploy-pages.yml: stages landing at /, game at /play.html, deploys when landing/ changes
+#  - invite links: the game builds /play?room=CODE; old /?room=CODE links are forwarded by the landing page
+#  - pages/_headers: no-cache for /play and /play.html; PWA start_url -> /play
+# Run from ~/street-dominoes. Exact-match anchors, automatic restore, idempotent. SD_NO_GIT=1 skips commit / push.
+set -euo pipefail
+cd "${SD_REPO:-$HOME/street-dominoes}"
+WF=.github/workflows/deploy-pages.yml
+HTML=app/src/main/assets/www/index.html
+for f in "$WF" "$HTML" pages/_headers; do [ -f "$f" ] || { echo "missing $f - run this from the repo root"; exit 1; }; done
+T="${TMPDIR:-$HOME/tmp}"; mkdir -p "$T"; BK="$(mktemp -d "$T/sdland.XXXXXX")"
+FILES=("$WF" "$HTML" pages/_headers pages/manifest.webmanifest landing/index.html)
+for f in "${FILES[@]}"; do [ -f "$f" ] && { mkdir -p "$BK/$(dirname "$f")"; cp "$f" "$BK/$f"; }; done
+trap 'echo "FAILED - restoring"; for f in "${FILES[@]}"; do if [ -f "$BK/$f" ]; then cp "$BK/$f" "$f"; else rm -f "$f"; fi; done' ERR
+mkdir -p landing
+cat > landing/index.html <<'LANDING_EOF'
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Street Dominoes - play online, voice chat, no download needed</title>
+<meta name="description" content="Street Dominoes by ILINE TECH: real-time online dominoes with WebRTC voice chat, speed modes and global leaderboards. Play in your browser or download the Android APK.">
+<meta name="theme-color" content="#121212">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+:root{--bg:#121212;--red:#E53935;--red2:#b71c1c;--w:#fff;--mut:#b9b9b9;--gl:rgba(255,255,255,.06);--gb:rgba(255,255,255,.14)}
+*{box-sizing:border-box;margin:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--w);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Arabic",sans-serif;min-height:100vh;overflow-x:hidden;line-height:1.5}
+#bg{position:fixed;inset:0;width:100%;height:100%;z-index:0;display:block}
+body:before{content:"";position:fixed;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse at 50% 30%,rgba(229,57,53,.16),transparent 60%),linear-gradient(transparent 55%,rgba(18,18,18,.85))}
+main,footer,header{position:relative;z-index:2}
+header{display:flex;justify-content:space-between;align-items:center;padding:calc(14px + env(safe-area-inset-top,0px)) 20px 0;max-width:1100px;margin:auto}
+.brand{font-weight:800;letter-spacing:.14em;font-size:.8rem;color:var(--mut)}
+.brand b{color:var(--red)}
+.lang{display:flex;gap:6px}
+.lang button{background:var(--gl);border:1px solid var(--gb);color:var(--w);border-radius:999px;padding:6px 12px;font:inherit;font-size:.8rem;cursor:pointer}
+.lang button[aria-pressed=true]{background:var(--red);border-color:var(--red)}
+.hero{text-align:center;padding:9vh 20px 6vh;max-width:900px;margin:auto}
+h1{font-size:clamp(2.6rem,9vw,5.2rem);line-height:1.02;font-weight:900;letter-spacing:-.02em;text-shadow:0 0 40px rgba(229,57,53,.45)}
+h1 span{color:var(--red)}
+.sub{color:var(--mut);font-size:clamp(1rem,2.6vw,1.25rem);max-width:640px;margin:18px auto 30px}
+.cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:16px 28px;border-radius:14px;font-weight:700;font-size:1.05rem;text-decoration:none;color:var(--w);transition:transform .15s,box-shadow .15s}
+.btn:active{transform:scale(.97)}
+.btn.p{background:linear-gradient(180deg,var(--red),var(--red2));box-shadow:0 8px 30px rgba(229,57,53,.4)}
+.btn.p:hover{box-shadow:0 10px 38px rgba(229,57,53,.65)}
+.btn.s{background:var(--gl);border:1px solid var(--gb);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.btn.s:hover{border-color:var(--red)}
+.note{margin-top:14px;color:var(--mut);font-size:.85rem;min-height:1.3em}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;max-width:1100px;margin:0 auto;padding:4vh 20px 8vh}
+.card{background:var(--gl);border:1px solid var(--gb);border-radius:20px;padding:24px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 10px 40px rgba(0,0,0,.35);transition:transform .2s,border-color .2s}
+.card:hover{transform:translateY(-4px);border-color:rgba(229,57,53,.6)}
+.card i{font-style:normal;font-size:2rem;display:block;margin-bottom:10px}
+.card h3{font-size:1.1rem;margin-bottom:6px}
+.card p{color:var(--mut);font-size:.93rem}
+footer{text-align:center;padding:26px 20px calc(30px + env(safe-area-inset-bottom,0px));color:var(--mut);font-size:.85rem;border-top:1px solid var(--gb);background:rgba(18,18,18,.7)}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<canvas id="bg" aria-hidden="true"></canvas>
+<header><div class="brand">ILINE TECH <b>/</b> FERAK ALADDIN</div>
+<div class="lang" role="group" aria-label="Language"><button data-l="en">EN</button><button data-l="fr">FR</button><button data-l="ar">AR</button></div></header>
+<main>
+<section class="hero">
+<h1>STREET <span>DOMINOES</span></h1>
+<p class="sub" data-t="sub"></p>
+<div class="cta">
+<a class="btn p" id="play" href="play">&#9654; <span data-t="play"></span></a>
+<a class="btn s" id="apk" href="https://github.com/Aladdinweb/street-dominoes/releases/latest">&#11015; <span data-t="apk"></span></a>
+</div>
+<p class="note" id="note"></p>
+</section>
+<section class="grid">
+<div class="card"><i>&#127908;</i><h3 data-t="c1h"></h3><p data-t="c1p"></p></div>
+<div class="card"><i>&#9889;</i><h3 data-t="c2h"></h3><p data-t="c2p"></p></div>
+<div class="card"><i>&#127942;</i><h3 data-t="c3h"></h3><p data-t="c3p"></p></div>
+<div class="card"><i>&#127760;</i><h3 data-t="c4h"></h3><p data-t="c4p"></p></div>
+</section>
+</main>
+<footer>&copy; ILINE TECH by FERAK ALADDIN. All Rights Reserved.</footer>
+<script>
+(function(){
+// invite links (?room=CODE) and old bookmarks go straight to the game
+var q=location.search;if(/[?&]room=/.test(q)){location.replace('play'+q+location.hash);return}
+var T={
+en:{sub:'Real-time online dominoes with live voice chat. Street tables, speed rounds and global ranks.',play:'Play in Browser',apk:'Download APK',nb:'No install, works on any phone.',
+c1h:'Live voice chat',c1p:'Talk to your table in real time with peer-to-peer WebRTC audio.',c2h:'Speed modes',c2p:'Pick a turn timer of 10 to 30 seconds, or keep full manual control.',c3h:'Global leaderboards',c3p:'Daily, weekly and global ranks, with ranked online matches.',c4h:'Arabic and RTL',c4p:'Full right-to-left Arabic, plus English and French.'},
+fr:{sub:'Dominos en ligne en temps reel avec chat vocal. Tables de rue, parties rapides et classements mondiaux.',play:'Jouer dans le navigateur',apk:'Telecharger l\u2019APK',nb:'Sans installation, sur tout telephone.',
+c1h:'Chat vocal en direct',c1p:'Parlez a votre table en temps reel grace a l\u2019audio WebRTC pair a pair.',c2h:'Modes rapides',c2p:'Un minuteur de 10 a 30 secondes, ou le controle manuel complet.',c3h:'Classements mondiaux',c3p:'Classements quotidiens, hebdomadaires et mondiaux.',c4h:'Arabe et RTL',c4p:'Arabe de droite a gauche, plus anglais et francais.'},
+ar:{sub:'\u062F\u0648\u0645\u064A\u0646\u0648 \u0623\u0648\u0646\u0644\u0627\u064A\u0646 \u0645\u0628\u0627\u0634\u0631 \u0645\u0639 \u062F\u0631\u062F\u0634\u0629 \u0635\u0648\u062A\u064A\u0629. \u0637\u0627\u0648\u0644\u0627\u062A \u0627\u0644\u0634\u0627\u0631\u0639 \u0648\u062C\u0648\u0644\u0627\u062A \u0633\u0631\u064A\u0639\u0629 \u0648\u062A\u0631\u062A\u064A\u0628 \u0639\u0627\u0644\u0645\u064A.',play:'\u0627\u0644\u0639\u0628 \u0641\u064A \u0627\u0644\u0645\u062A\u0635\u0641\u062D',apk:'\u062A\u062D\u0645\u064A\u0644 APK',nb:'\u0628\u062F\u0648\u0646 \u062A\u062B\u0628\u064A\u062A \u0648\u064A\u0639\u0645\u0644 \u0639\u0644\u0649 \u0623\u064A \u0647\u0627\u062A\u0641.',
+c1h:'\u062F\u0631\u062F\u0634\u0629 \u0635\u0648\u062A\u064A\u0629 \u0645\u0628\u0627\u0634\u0631\u0629',c1p:'\u062A\u062D\u062F\u062B \u0645\u0639 \u0637\u0627\u0648\u0644\u062A\u0643 \u0641\u0648\u0631\u064B\u0627 \u0628\u0635\u0648\u062A WebRTC.',c2h:'\u0623\u0648\u0636\u0627\u0639 \u0633\u0631\u064A\u0639\u0629',c2p:'\u0645\u0624\u0642\u062A \u0645\u0646 10 \u0625\u0644\u0649 30 \u062B\u0627\u0646\u064A\u0629 \u0623\u0648 \u062A\u062D\u0643\u0645 \u064A\u062F\u0648\u064A \u0643\u0627\u0645\u0644.',c3h:'\u062A\u0631\u062A\u064A\u0628 \u0639\u0627\u0644\u0645\u064A',c3p:'\u062A\u0631\u062A\u064A\u0628 \u064A\u0648\u0645\u064A \u0648\u0623\u0633\u0628\u0648\u0639\u064A \u0648\u0639\u0627\u0644\u0645\u064A.',c4h:'\u0627\u0644\u0639\u0631\u0628\u064A\u0629 \u0648RTL',c4p:'\u062F\u0639\u0645 \u0643\u0627\u0645\u0644 \u0644\u0644\u0639\u0631\u0628\u064A\u0629 \u0645\u0639 \u0627\u0644\u0625\u0646\u062C\u0644\u064A\u0632\u064A\u0629 \u0648\u0627\u0644\u0641\u0631\u0646\u0633\u064A\u0629.'}};
+var lang=(localStorage.getItem('dm_lang')||navigator.language||'en').slice(0,2);if(!T[lang])lang='en';
+function setL(l){lang=l;try{localStorage.setItem('dm_lang',l)}catch(e){}var d=T[l];
+document.documentElement.lang=l;document.documentElement.dir=l==='ar'?'rtl':'ltr';
+document.querySelectorAll('[data-t]').forEach(function(n){n.textContent=d[n.dataset.t]});
+document.getElementById('note').textContent=d.nb+(ver?' APK '+ver:'');
+document.querySelectorAll('.lang button').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.l===l)})}
+var ver='';
+document.querySelectorAll('.lang button').forEach(function(b){b.onclick=function(){setL(b.dataset.l)}});
+setL(lang);
+// latest APK straight from the GitHub release (no version hard-coded); falls back to the releases page
+fetch('https://api.github.com/repos/Aladdinweb/street-dominoes/releases/latest').then(function(r){return r.ok?r.json():Promise.reject()}).then(function(j){
+var a=(j.assets||[]).find(function(x){return /\.apk$/i.test(x.name)});if(a){document.getElementById('apk').href=a.browser_download_url;ver=j.tag_name||'';setL(lang)}}).catch(function(){});
+
+// ---- domino physics background
+var cv=document.getElementById('bg'),cx=cv.getContext('2d'),W,H,D,tiles=[],mx=-999,my=-999,run=true,rm=matchMedia('(prefers-reduced-motion:reduce)').matches;
+function size(){D=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*D;cv.height=H*D;cx.setTransform(D,0,0,D,0,0)}
+function mk(){var s=Math.max(34,Math.min(W,H)*.075);return{x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.7,vy:(Math.random()-.5)*.7,a:Math.random()*6.28,va:(Math.random()-.5)*.012,s:s,p:[Math.random()*7|0,Math.random()*7|0]}}
+var PIP={0:[],1:[[0,0]],2:[[-1,-1],[1,1]],3:[[-1,-1],[0,0],[1,1]],4:[[-1,-1],[1,-1],[-1,1],[1,1]],5:[[-1,-1],[1,-1],[0,0],[-1,1],[1,1]],6:[[-1,-1],[1,-1],[-1,0],[1,0],[-1,1],[1,1]]};
+function draw(t){var w=t.s,h=t.s*2,r=w*.16;cx.save();cx.translate(t.x,t.y);cx.rotate(t.a);cx.globalAlpha=.8;
+cx.shadowColor='rgba(0,0,0,.6)';cx.shadowBlur=14;cx.shadowOffsetY=6;
+var g=cx.createLinearGradient(-w/2,-h/2,w/2,h/2);g.addColorStop(0,'#4a2e1b');g.addColorStop(.5,'#2e1a0e');g.addColorStop(1,'#1c0f07');
+cx.fillStyle=g;cx.beginPath();cx.roundRect(-w/2,-h/2,w,h,r);cx.fill();cx.shadowColor='transparent';
+cx.strokeStyle='rgba(255,255,255,.12)';cx.lineWidth=1;cx.stroke();
+cx.strokeStyle='rgba(229,57,53,.75)';cx.lineWidth=2;cx.beginPath();cx.moveTo(-w*.36,0);cx.lineTo(w*.36,0);cx.stroke();
+for(var k=0;k<2;k++){var cy=(k?1:-1)*h/4,u=w*.22;PIP[t.p[k]].forEach(function(d){cx.fillStyle=t.p[k]===6||t.p[k]===1?'#E53935':'#f4efe6';cx.beginPath();cx.arc(d[0]*u,cy+d[1]*u,w*.07,0,6.28);cx.fill()})}
+cx.restore()}
+function step(){if(!run)return;cx.clearRect(0,0,W,H);
+for(var i=0;i<tiles.length;i++){var a=tiles[i];
+for(var j=i+1;j<tiles.length;j++){var b=tiles[j],dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy),m=(a.s+b.s)*.72;
+if(d<m&&d>0){var nx=dx/d,ny=dy/d,o=(m-d)/2;a.x-=nx*o;a.y-=ny*o;b.x+=nx*o;b.y+=ny*o;
+var rv=(b.vx-a.vx)*nx+(b.vy-a.vy)*ny;if(rv<0){a.vx+=nx*rv;a.vy+=ny*rv;b.vx-=nx*rv;b.vy-=ny*rv;a.va-=rv*.01;b.va+=rv*.01}}}
+var px=a.x-mx,py=a.y-my,pd=Math.hypot(px,py);if(pd<140&&pd>0){a.vx+=px/pd*.12;a.vy+=py/pd*.12}
+a.vx*=.999;a.vy*=.999;var sp=Math.hypot(a.vx,a.vy);if(sp>1.6){a.vx*=1.6/sp;a.vy*=1.6/sp}if(sp<.12){a.vx+=(Math.random()-.5)*.05;a.vy+=(Math.random()-.5)*.05}
+a.x+=a.vx;a.y+=a.vy;a.a+=a.va;a.va*=.998;var e=a.s;
+if(a.x<e){a.x=e;a.vx=Math.abs(a.vx)}if(a.x>W-e){a.x=W-e;a.vx=-Math.abs(a.vx)}if(a.y<e){a.y=e;a.vy=Math.abs(a.vy)}if(a.y>H-e){a.y=H-e;a.vy=-Math.abs(a.vy)}draw(a)}
+requestAnimationFrame(step)}
+function init(){size();var n=Math.max(8,Math.min(20,Math.round(W*H/52000)));tiles=[];for(var i=0;i<n;i++)tiles.push(mk());if(rm){tiles.forEach(draw)}else step()}
+addEventListener('resize',function(){size();tiles.forEach(function(t){t.x=Math.min(t.x,W);t.y=Math.min(t.y,H)});if(rm){cx.clearRect(0,0,W,H);tiles.forEach(draw)}});
+addEventListener('pointermove',function(e){mx=e.clientX;my=e.clientY});addEventListener('pointerleave',function(){mx=my=-999});
+document.addEventListener('visibilitychange',function(){var was=run;run=!document.hidden;if(run&&!was&&!rm)step()});
+init();
+})();
+</script>
+</body>
+</html>
+LANDING_EOF
+export WF HTML
+node - <<'JS'
+const fs = require('fs');
+const die = m => { console.error('ABORT: ' + m); process.exit(1); };
+const cnt = (s, f) => s.split(f).length - 1;
+const exact = (s, tag, a, b) => { const n = cnt(s, a); if (n !== 1) die(tag + ': anchor found ' + n + ' times (need 1): ' + a.slice(0, 70)); return s.replace(a, () => b); };
+
+// workflow
+{
+  const f = process.env.WF; let s = fs.readFileSync(f, 'utf8');
+  if (!s.includes('landing/')) {
+    s = exact(s, 'wf.paths', "      - 'pages/**'\n", "      - 'pages/**'\n      - 'landing/**'\n");
+    s = exact(s, 'wf.stage', '          test -f dist/index.html',
+      "          test -f dist/index.html\n          test -f landing/index.html\n          cp dist/index.html dist/play.html        # the game lives at /play (play.html)\n          cp landing/index.html dist/index.html    # the landing page lives at /");
+    fs.writeFileSync(f, s);
+    console.log('workflow updated');
+  } else console.log('workflow already updated');
+}
+// game invite links -> /play?room=CODE
+{
+  const f = process.env.HTML; let s = fs.readFileSync(f, 'utf8');
+  if (s.includes("const INVITE_BASE='https://street-dominoes.pages.dev/play'")) console.log('invite base already /play');
+  else { s = exact(s, 'invite', "const INVITE_BASE='https://street-dominoes.pages.dev/';", "const INVITE_BASE='https://street-dominoes.pages.dev/play';"); fs.writeFileSync(f, s); console.log('invite links now /play?room=CODE'); }
+}
+// headers
+{
+  const f = 'pages/_headers'; let s = fs.readFileSync(f, 'utf8');
+  if (!/^\/play\.html\s*$/m.test(s)) { s = s.replace(/\s*$/, '\n') + '/play.html\n  Cache-Control: no-cache\n/play\n  Cache-Control: no-cache\n'; fs.writeFileSync(f, s); console.log('_headers: /play no-cache'); }
+}
+// PWA: installed app should open the game, not the landing page
+{
+  const f = 'pages/manifest.webmanifest';
+  if (fs.existsSync(f)) {
+    let j; try { j = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { die('manifest is not valid JSON'); }
+    if (j.start_url !== '/play') { j.start_url = '/play'; fs.writeFileSync(f, JSON.stringify(j, null, 2) + '\n'); console.log('manifest start_url -> /play'); }
+  }
+}
+JS
+echo "landing/index.html written ($(wc -c < landing/index.html) bytes)"
+trap - ERR
+if [ -z "${SD_NO_GIT:-}" ]; then
+  git add -A
+  git diff --cached --quiet && { echo "nothing to commit"; exit 0; }
+  git commit -m "Landing page at /, game at /play, invite links to /play"
+  git push
+fi
+echo "Done. After the Pages deploy check: / (landing), /play (game), /?room=ABCDE (forwards to /play?room=ABCDE)."
