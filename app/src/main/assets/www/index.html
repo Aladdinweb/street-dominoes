@@ -363,10 +363,10 @@ $('ov').hidden=false;snd.lock();clearTimeout(bkTm);bkTm=setTimeout(bkNext,6500)}
 function bkNext(){clearTimeout(bkTm);if($('ov').hidden)return;$('ov').hidden=true;VictoryOverlay()}
 function VictoryOverlay(){const x=t(),ms=score[0]>=target||score[1]>=target,mt=score[0]>=score[1]?0:1;let pay='';
 {const me2=seat.indexOf(1),key=rkey();if(statKey!==key){statKey=key;stats.rp++;if(wt>=0&&wt===tm(me2)){stats.rw++;if(blocked){stats.bw++;mBlk++}}
-if(ms){stats.mp++;const won=mt===tm(me2);ecoXp(won?40:15);saveRecents();if(won){stats.mw++;stats.ws++}else stats.ws=0;
+if(ms){stats.mp++;const won=mt===tm(me2);ecoXp((window.SDAds?SDAds.xp:function(v){return v})(won?40:15));saveRecents();if(won){stats.mw++;stats.ws++}else stats.ws=0;
 pend.push({playerId:pid,name:(names[0]||'').trim()||'Player',avatar:AV[avs[0]],result:won?'win':'loss',blockedWins:Math.min(mBlk,14),mode:net.online?'online':(net.client||net.host)?'lan':'solo',gm,target});savePend();mBlk=0;setTimeout(flushPend,400)}
 saveSet()}}
-if(ms&&stake){const me=seat.indexOf(1),win=tm(me)===mt,tot=stake*act.length;if(!settled){settled=true;if(win)coins+=tot/TP(mt).length;saveSet()}pay=`<div class="mw">🪙 ${x.pot}: ${tot.toLocaleString()} — ${win?x.yw+' +'+stake.toLocaleString():x.yl+' −'+stake.toLocaleString()} · ${x.bal}: ${coins.toLocaleString()}</div>`}
+if(ms&&stake){const me=seat.indexOf(1),win=tm(me)===mt,tot=stake*act.length;if(!settled){settled=true;if(win)coins+=tot/TP(mt).length;else if(window.SDAds&&SDAds.shield(stake))coins+=stake;saveSet()}pay=`<div class="mw">🪙 ${x.pot}: ${tot.toLocaleString()} — ${win?x.yw+' +'+stake.toLocaleString():x.yl+' −'+stake.toLocaleString()} · ${x.bal}: ${coins.toLocaleString()}</div>`}
 if(net.online&&ms&&net.rkd&&net.rkd.rated)pay+=`<div class="mw">🏆 ${net.rkd.d>0?'+':''}${net.rkd.d} · ${net.rkd.rp}</div>`;
 const card=k=>`<div class="rr ${k===wt?'w':''}" style="border-color:${TEAMC[k]}"><div class="rh"><b style="color:${TEAMC[k]}">${tl(k)}</b><span class="tot" style="color:${TEAMC[k]}">${score[k]}${k===wt?` <small>+${gain}</small>`:''}</span></div>${TP(k).map(p=>`<div class="rh"><span>${nm(p)}</span><span>${sum(hands[p])} ${x.pips}</span></div><div class="mini">${hands[p].length?hands[p].map(h=>tile(h[0],h[1],'h')).join(''):'<i>✓</i>'}</div>`).join('')}<div class="rh"><span>${x.rem}</span><b>${tsum(k)} ${x.pips}</b></div></div>`;
 const sparks=Array.from({length:16},(_,i)=>`<i class="sp" style="--a:${i*22.5}deg;--d:${70+(i%3)*22}px;animation-delay:${(i%4)*.06}s"></i>`).join('');
@@ -828,7 +828,7 @@ function soloDlg(){const x=t();if(soloStake>coins)soloStake=0;
 const chips=[0,100,500,1000,5000].map(v=>`<b data-sst="${v}" class="${soloStake===v?'on':''}${v>coins?' dis2':''}">${v?'🪙 '+v.toLocaleString():x.ssFree}</b>`).join('');
 upShow(`<h3>${x.chm}</h3><label class="sdl">${x.ssT} · ${x.bal}: 🪙 ${coins.toLocaleString()}</label><div class="sw chips">${chips}</div><button class="big" id="s11">🤖 ${x.sBot11}</button><button class="big" id="s22">🤖 ${x.sBot22}</button><button class="big" id="spp">👥 ${x.sPP}</button><button class="big alt" id="upx">${x.mBack}</button>`)}
 function menuHTML(){const x=t(),rdy=boxReady(),fl=prof2.cc?flagEmoji(prof2.cc):'';
-return`<div class="mhd"><div class="pcard2" id="pc"><span class="av2">${avBig()}</span><div class="pid"><div class="pn"><b>${esc(myName())}</b>${fl?`<span class="fl">${fl}</span>`:''}</div><em class="ttl2">${titleOf(stats.mw,lang)}</em></div></div><div class="wal"><div class="chip2"><b>🪙 ${coins.toLocaleString()}</b><small>${x.coinsL}</small></div><div class="chip2"><b>🏆 ${stats.rk|0}</b><small>${x.rkL}</small></div><div class="chip2"><b>⭐ ${ecoLvl()}</b><small>${x.xpL} ${eco.xp%XP_LV}/${XP_LV}</small></div></div></div><button class="big" data-m="solo">🤖 ${x.mSolo}</button><button class="big alt" data-m="lan">📡 ${x.mLan}</button><button class="big alt" data-m="online">🌐 ${x.mOnline}</button><div class="row2"><button class="big alt bx${rdy?' ready':''}" data-m="box">🎁 ${x.mBox}<span class="sub" id="bxc">${rdy?x.mBoxReady:fmtHMS(boxLeft())}</span></button><button class="big alt" data-m="lb">🏆 ${x.mLb}</button></div><button class="big alt" data-m="fr">👥 ${x.mFr}<span class="sub" id="frc">${Pres.onlineText()}</span></button>`}
+return`<div class="mhd"><div class="pcard2" id="pc"><span class="av2">${avBig()}</span><div class="pid"><div class="pn"><b>${esc(myName())}</b>${fl?`<span class="fl">${fl}</span>`:''}</div><em class="ttl2">${titleOf(stats.mw,lang)}</em></div></div><div class="wal"><div class="chip2"><b>🪙 ${coins.toLocaleString()}</b><small>${x.coinsL}</small></div><div class="chip2"><b>🏆 ${stats.rk|0}</b><small>${x.rkL}</small></div><div class="chip2"><b>⭐ ${ecoLvl()}</b><small>${x.xpL} ${eco.xp%XP_LV}/${XP_LV}</small></div></div></div><button class="big" data-m="solo">🤖 ${x.mSolo}</button><button class="big alt" data-m="lan">📡 ${x.mLan}</button><button class="big alt" data-m="online">🌐 ${x.mOnline}</button><div class="row2"><button class="big alt bx${rdy?' ready':''}" data-m="box">🎁 ${x.mBox}<span class="sub" id="bxc">${rdy?x.mBoxReady:fmtHMS(boxLeft())}</span></button><button class="big alt" data-m="lb">🏆 ${x.mLb}</button></div>${window.SDAds?SDAds.btn():''}<button class="big alt" data-m="fr">👥 ${x.mFr}<span class="sub" id="frc">${Pres.onlineText()}</span></button>`}
 function menuUI(){$('menu').innerHTML=menuHTML()}
 function streetGrid(){const n=STREET_SPECS.length+VIP_N;return Array.from({length:n},(_,k)=>{const vip=k>=STREET_SPECS.length,own=!vip||eco.vip.includes(k);return`<b ${own?`data-sav="${k}"`:'data-lock="1"'} class="${prof2.k==='street'&&prof2.s===k?'on':''}${vip?' vip':''}${own?'':' lk'}"><img class="avi" src="${streetUri(k)}" alt="">${own?'':'<i class="lki">🔒</i>'}</b>`}).join('')}
 function profExtras(x){const lv=ecoLvl(),xp=eco.xp%XP_LV;return`<div class="sdl">⭐ ${x.lvlL} ${lv} · ${xp}/${XP_LV} ${x.xpL}</div><div class="bar"><i style="width:${xp*100/XP_LV}%;background:var(--ac)"></i></div>${CAN_PHOTO?`<div class="sdl">${x.pfPhoto}</div><div class="sw chips"><b id="phb">📷 ${x.pfUpload}</b>${photo?`<b id="phx">🗑 ${x.pfRemove}</b>`:''}</div><input type="file" id="phf" accept="image/*" hidden>`:''}<div class="sdl">${x.pfStreet}</div><div class="sw chips ag sdg">${streetGrid()}</div><div class="sdl">${x.pfCountry}</div><select id="pcc" class="pni"><option value="">🌍 ${x.pfNone}</option>${ccOptions()}</select>`}
@@ -1033,6 +1033,7 @@ $('seats').oninput=e=>{const n=e.target.dataset.n;if(n!==undefined){names[+n]=e.
 $('menu').onclick=e=>{if(e.target.closest('#pc')){ProfileModal();return}const b=e.target.closest('button');if(!b)return;const m=b.dataset.m,x=t();
 if(m==='solo')soloDlg()
 else if(m==='box')openBox()
+else if(m==='spin'&&window.SDAds)SDAds.openSpin()
 else if(m==='lb')openLb()
 else if(m==='fr')openFr()
 else if(m==='lan'){inMenu=false;if(NA)setMode(1);else render()}
@@ -1121,4 +1122,5 @@ $('upp').addEventListener('click',function h(e){if(e.target.id!=='gj')return;con
 })();
 const spl=$('splash');spl.onclick=()=>spl.classList.add('out');
 setTimeout(()=>{spl.classList.add('out');setTimeout(()=>spl.remove(),700);if(NA)Native.checkUpdate('auto')},2800);
-</script></body></html>
+</script>
+<script src="sd-ads.js"></script></body></html>

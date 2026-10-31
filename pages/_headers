@@ -18,3 +18,5 @@
   Cache-Control: no-cache
 /play
   Cache-Control: no-cache
+/sd-ads.js
+  Cache-Control: no-cache

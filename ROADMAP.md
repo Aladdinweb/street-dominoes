@@ -78,6 +78,13 @@ AdMob needs the native Android SDK, so this means Kotlin work in `MainActivity.k
 - [ ] **Rewarded video - Multiplier Wheel:** spin wheel (x1.5 up to x100, weighted) after a win or a Daily Box to multiply the coin reward.
 - [ ] Rewards granted only after the ad-completed callback; server-side validation once rewards touch server-held balances.
 
+## Update v1.4.0 - Ads layer (JS side done, AdMob native side pending)
+
+- [x] Landing page Google Play button with a "Coming Soon" modal.
+- [x] Bottom banner slot (space reserved only while an ad shows), Daily Box extra ad roll (once per day), boost-only Spin Wheel (Loss Shield, XP Booster, Lucky Extra Spin).
+- [ ] AdMob in Kotlin: Gradle dependency + App ID in the manifest, UMP consent (EEA), banner view under the WebView, rewarded ads, `Native.showRewarded` / `bannerShow` / `bannerHide` + `onAdResult` / `onBannerState`. Use Google test ad ids until the Play listing exists.
+- [ ] Play policy: privacy policy, data-safety form (ads), and keep rewarded ads optional.
+
 ## Phase 3 - Security and anti-cheat
 
 - [ ] **Server-authoritative game logic:** deal tiles and validate every move in the Worker / Durable Object (online already validates turns and legality; extend to all modes that count for ranking and stakes).

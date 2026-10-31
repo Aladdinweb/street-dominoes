@@ -132,3 +132,7 @@
 - Fix: friends window flicker (presence render loop), keyboard resize, bounded panel height.
 - Match invites keep ringing every 20 s for 3 minutes until accepted / declined (new `POST /api/invite-response`); Join / Decline on the notification.
 - FCM invites and pings are data-only high-priority messages rendered by `StreetMessagingService`.
+
+## 1.4.0
+- Landing: Google Play button with a Coming Soon modal.
+- Ads layer: bottom banner slot, Daily Box extra ad roll (1/day), boost-only Spin Wheel (Loss Shield, XP Booster, Lucky Extra Spin).
