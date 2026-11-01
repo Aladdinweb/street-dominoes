@@ -1,0 +1,147 @@
+package com.iline.streetdominoes
+
+import android.app.Activity
+import android.view.Gravity
+import android.view.View
+import android.webkit.WebView
+import android.widget.FrameLayout
+import android.widget.Toast
+import com.google.android.gms.ads.AdError
+import com.google.android.gms.ads.AdListener
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.AdSize
+import com.google.android.gms.ads.AdView
+import com.google.android.gms.ads.FullScreenContentCallback
+import com.google.android.gms.ads.LoadAdError
+import com.google.android.gms.ads.MobileAds
+import com.google.android.gms.ads.rewarded.RewardedAd
+import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
+import com.google.android.ump.ConsentRequestParameters
+import com.google.android.ump.UserMessagingPlatform
+import org.json.JSONObject
+import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+ * AdMob for the web game (page side: www/sd-ads.js).
+ *  - consent first (Google UMP; only shows a form where the AdMob console has one, e.g. EEA), then MobileAds.initialize
+ *  - bottom adaptive banner drawn over the WebView; the page reserves the same height (window.onBannerState) so nothing is covered
+ *  - rewarded ads: preloaded, result reported with window.onAdResult(id, earned); the page grants rewards only when earned is true
+ * Ad unit ids come from BuildConfig (Google test ids unless real ones are passed at build time).
+ */
+class Ads(private val act: Activity, private val web: WebView, private val host: FrameLayout) {
+    private val info = UserMessagingPlatform.getConsentInformation(act)
+    private val started = AtomicBoolean(false)
+    @Volatile private var ready = false
+    private var banner: AdView? = null
+    private var bannerH = 0
+    private var wantBanner = false
+    private var rewarded: RewardedAd? = null
+    private var loading = false
+
+    val supported: Boolean get() = ready
+
+    fun start() {
+        info.requestConsentInfoUpdate(act, ConsentRequestParameters.Builder().build(), {
+            UserMessagingPlatform.loadAndShowConsentFormIfRequired(act) { _ -> initAds() }
+        }, { _ -> initAds() })
+        initAds()   // consent from an earlier session may already allow ads
+    }
+
+    private fun initAds() {
+        if (!info.canRequestAds() || !started.compareAndSet(false, true)) return
+        Thread {
+            MobileAds.initialize(act) {
+                act.runOnUiThread {
+                    ready = true
+                    loadRewarded()
+                    if (wantBanner) showBanner()
+                }
+            }
+        }.start()
+    }
+
+    private fun report(h: Int) {
+        act.runOnUiThread { web.evaluateJavascript("window.onBannerState&&window.onBannerState($h)", null) }
+    }
+
+    private fun result(id: String, ok: Boolean) {
+        act.runOnUiThread { web.evaluateJavascript("window.onAdResult&&window.onAdResult(${JSONObject.quote(id)},$ok)", null) }
+    }
+
+    // ---- banner ----
+    fun showBanner() {
+        wantBanner = true
+        if (!ready) return
+        act.runOnUiThread {
+            val v = banner
+            if (v == null) {
+                val dm = act.resources.displayMetrics
+                val size = AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(act, (dm.widthPixels / dm.density).toInt())
+                val nv = AdView(act)
+                nv.setAdSize(size)
+                nv.adUnitId = BuildConfig.ADMOB_BANNER
+                nv.adListener = object : AdListener() {
+                    override fun onAdLoaded() { bannerH = size.height; if (wantBanner) report(bannerH) }
+                    override fun onAdFailedToLoad(e: LoadAdError) {
+                        bannerH = 0
+                        report(0)
+                        host.postDelayed({ if (wantBanner) banner?.loadAd(AdRequest.Builder().build()) }, 60_000)
+                    }
+                }
+                host.addView(nv, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
+                banner = nv
+                nv.loadAd(AdRequest.Builder().build())
+            } else {
+                v.visibility = View.VISIBLE
+                v.resume()
+                if (bannerH > 0) report(bannerH)
+            }
+        }
+    }
+
+    fun hideBanner() {
+        wantBanner = false
+        act.runOnUiThread {
+            banner?.visibility = View.GONE
+            banner?.pause()
+            report(0)
+        }
+    }
+
+    // ---- rewarded ----
+    private fun loadRewarded() {
+        if (!ready || loading || rewarded != null) return
+        loading = true
+        RewardedAd.load(act, BuildConfig.ADMOB_REWARDED, AdRequest.Builder().build(), object : RewardedAdLoadCallback() {
+            override fun onAdLoaded(ad: RewardedAd) { rewarded = ad; loading = false }
+            override fun onAdFailedToLoad(e: LoadAdError) {
+                rewarded = null
+                loading = false
+                host.postDelayed({ loadRewarded() }, 30_000)
+            }
+        })
+    }
+
+    fun showRewarded(id: String) {
+        act.runOnUiThread {
+            val ad = rewarded
+            if (ad == null) {
+                Toast.makeText(act, "Ad not ready yet, try again in a moment", Toast.LENGTH_SHORT).show()
+                loadRewarded()
+                result(id, false)
+                return@runOnUiThread
+            }
+            rewarded = null
+            var earned = false
+            ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+                override fun onAdDismissedFullScreenContent() { result(id, earned); loadRewarded() }
+                override fun onAdFailedToShowFullScreenContent(e: AdError) { result(id, false); loadRewarded() }
+            }
+            ad.show(act) { earned = true }
+        }
+    }
+
+    fun pause() { banner?.pause() }
+    fun resume() { if (wantBanner) banner?.resume() }
+    fun destroy() { banner?.destroy(); banner = null }
+}

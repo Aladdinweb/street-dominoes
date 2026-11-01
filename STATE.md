@@ -131,3 +131,9 @@ Superseded by [ROADMAP.md](ROADMAP.md) (phases 1-5).
 - Native bridge contract (Kotlin side not written yet): `Native.showRewarded(id)` then `window.onAdResult(id, ok)`; `Native.bannerShow()` / `bannerHide()` then `window.onBannerState(heightCssPx)` (the page reserves `--adh` at the bottom only while an ad is really showing; `body.hasad #app` shrinks). Web build: no ads unless `?adtest=1` (simulated 3 s ad + test banner).
 - Banner shows while `inGame`. Daily Box: when the box is locked, `openBox` is wrapped to add "Watch an ad for an extra box" (once per local day, rolls `rollBox`/`applyBox` like the normal box). Spin Wheel (menu button `data-m="spin"`): outcomes Loss Shield 35 / XP x2 for 60 min (cap 120) 40 / free spin token 25, no coins; a spin costs one rewarded ad (5 per day) or a token. Loss Shield: refunds the entry fee when a staked match is lost (hook in the stake settlement), consumed only then. XP boost doubles match XP (`ecoXp(SDAds.xp(...))`).
 - Landing: Google Play button opens a "Coming Soon to Google Play Store!" modal (EN / FR / AR).
+
+<!-- sd141 -->
+## 19. Android AdMob (v1.4.0)
+- `Ads.kt`: UMP consent -> `MobileAds.initialize` -> adaptive banner (drawn over the bottom of the WebView in a `FrameLayout`; the page reserves the height through `window.onBannerState`) and preloaded rewarded ads (`window.onAdResult(id, earned)`). `MainActivity` bridge: `adsSupported`, `showRewarded(id)`, `bannerShow`, `bannerHide`; lifecycle `pause/resume/destroy`.
+- Ad ids: `app/build.gradle.kts` reads env `ADMOB_APP_ID`, `ADMOB_BANNER`, `ADMOB_REWARDED` (manifest placeholder `admobAppId`, BuildConfig `ADMOB_BANNER` / `ADMOB_REWARDED`); the defaults are Google's TEST ids. Dependencies: `play-services-ads:23.2.0`, `user-messaging-platform:2.2.0`.
+- Not compiled in the chat sandbox: the GitHub Actions APK build is the compile check.

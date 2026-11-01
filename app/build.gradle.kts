@@ -11,6 +11,10 @@ android {
         versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 10302
         versionName = (project.findProperty("versionName") as String?) ?: "1.3.2"
         buildConfigField("String", "REPO", "\"Aladdinweb/street-dominoes\"")
+        // AdMob: Google's public TEST ids by default; pass the real ones with env ADMOB_APP_ID / ADMOB_BANNER / ADMOB_REWARDED
+        manifestPlaceholders["admobAppId"] = env("ADMOB_APP_ID", "ca-app-pub-3940256099942544~3347511713")
+        buildConfigField("String", "ADMOB_BANNER", "\"" + env("ADMOB_BANNER", "ca-app-pub-3940256099942544/9214589741") + "\"")
+        buildConfigField("String", "ADMOB_REWARDED", "\"" + env("ADMOB_REWARDED", "ca-app-pub-3940256099942544/5224354917") + "\"")
     }
     buildFeatures { buildConfig = true }
     signingConfigs {
@@ -31,4 +35,6 @@ dependencies {
     implementation("org.java-websocket:Java-WebSocket:1.5.7")
     implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
     implementation("com.google.firebase:firebase-messaging")
+    implementation("com.google.android.gms:play-services-ads:23.2.0")
+    implementation("com.google.android.ump:user-messaging-platform:2.2.0")
 }

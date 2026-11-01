@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class MainActivity : Activity() {
     private lateinit var web: WebView
+    private var ads: Ads? = null                    // AdMob (banner + rewarded), see Ads.kt
     private var server: WebSocketServer? = null
     private var client: WebSocketClient? = null
     private val ids = ConcurrentHashMap<WebSocket, Int>()
@@ -94,7 +95,10 @@ class MainActivity : Activity() {
             }
         }
         web.addJavascriptInterface(Bridge(), "Native")
-        setContentView(web)
+        val host = android.widget.FrameLayout(this)   // the banner is drawn over the bottom of the WebView; the page reserves the same height
+        host.addView(web, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
+        setContentView(host)
+        ads = Ads(this, web, host).also { it.start() }
         web.loadUrl("file:///android_asset/www/index.html")
         // push notifications: channel, tap handling, device token
         current = this
@@ -109,8 +113,8 @@ class MainActivity : Activity() {
         handleIntent(intent)
     }
 
-    override fun onResume() { super.onResume(); isForeground = true }
-    override fun onPause() { isForeground = false; super.onPause() }
+    override fun onResume() { super.onResume(); isForeground = true; ads?.resume() }
+    override fun onPause() { isForeground = false; ads?.pause(); super.onPause() }
 
     // ---- push notifications (Firebase Cloud Messaging; stays inactive when the build has no google-services.json) ----
     private fun jsCall(fn: String, arg: String) = runOnUiThread { web.evaluateJavascript("window.$fn&&window.$fn($arg)", null) }
@@ -204,6 +208,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         if (current === this) current = null
+        ads?.destroy()
         try { server?.stop(100) } catch (_: Exception) {}
         try { client?.close() } catch (_: Exception) {}
         super.onDestroy()
@@ -230,6 +235,11 @@ class MainActivity : Activity() {
 
     inner class Bridge {
         @JavascriptInterface fun version(): String = BuildConfig.VERSION_NAME
+        // ---- ads (page side: www/sd-ads.js) ----
+        @JavascriptInterface fun adsSupported(): Boolean = ads?.supported == true
+        @JavascriptInterface fun showRewarded(id: String) { val a = ads; if (a != null) a.showRewarded(id) else jsCall("onAdResult", JSONObject.quote(id) + ",false") }
+        @JavascriptInterface fun bannerShow() { ads?.showBanner() }
+        @JavascriptInterface fun bannerHide() { ads?.hideBanner() }
         @JavascriptInterface fun supportsFilePicker(): Boolean = true
         @JavascriptInterface fun pushSupported(): Boolean = Push.ready(applicationContext)
         @JavascriptInterface fun getPushToken(): String = Push.token(applicationContext)
