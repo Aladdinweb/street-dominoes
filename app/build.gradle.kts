@@ -12,9 +12,9 @@ android {
         versionName = (project.findProperty("versionName") as String?) ?: "1.3.2"
         buildConfigField("String", "REPO", "\"Aladdinweb/street-dominoes\"")
         // AdMob: Google's public TEST ids by default; pass the real ones with env ADMOB_APP_ID / ADMOB_BANNER / ADMOB_REWARDED
-        manifestPlaceholders["admobAppId"] = env("ADMOB_APP_ID", "ca-app-pub-3940256099942544~3347511713")
-        buildConfigField("String", "ADMOB_BANNER", "\"" + env("ADMOB_BANNER", "ca-app-pub-3940256099942544/9214589741") + "\"")
-        buildConfigField("String", "ADMOB_REWARDED", "\"" + env("ADMOB_REWARDED", "ca-app-pub-3940256099942544/5224354917") + "\"")
+        manifestPlaceholders["admobAppId"] = env("ADMOB_APP_ID", "ca-app-pub-3991857229262724~1656760152")
+        buildConfigField("String", "ADMOB_BANNER", "\"" + env("ADMOB_BANNER", "ca-app-pub-3991857229262724/3200494859") + "\"")
+        buildConfigField("String", "ADMOB_REWARDED", "\"" + env("ADMOB_REWARDED", "ca-app-pub-3991857229262724/1470067055") + "\"")
     }
     buildFeatures { buildConfig = true }
     signingConfigs {
