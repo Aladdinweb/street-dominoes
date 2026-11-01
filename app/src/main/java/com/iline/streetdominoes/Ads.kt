@@ -37,6 +37,7 @@ class Ads(private val act: Activity, private val web: WebView, private val host:
     private var wantBanner = false
     private var rewarded: RewardedAd? = null
     private var loading = false
+    @Volatile private var lastErr = ""          // last rewarded load error, shown in the "not ready" message
 
     val supported: Boolean get() = ready
 
@@ -115,6 +116,7 @@ class Ads(private val act: Activity, private val web: WebView, private val host:
         RewardedAd.load(act, BuildConfig.ADMOB_REWARDED, AdRequest.Builder().build(), object : RewardedAdLoadCallback() {
             override fun onAdLoaded(ad: RewardedAd) { rewarded = ad; loading = false }
             override fun onAdFailedToLoad(e: LoadAdError) {
+                lastErr = "load ${e.code}"
                 rewarded = null
                 loading = false
                 host.postDelayed({ loadRewarded() }, 30_000)
@@ -126,7 +128,7 @@ class Ads(private val act: Activity, private val web: WebView, private val host:
         act.runOnUiThread {
             val ad = rewarded
             if (ad == null) {
-                Toast.makeText(act, "Ad not ready yet, try again in a moment", Toast.LENGTH_SHORT).show()
+                Toast.makeText(act, "Ad not ready yet (" + (if (!ready) "starting" else lastErr.ifEmpty { "loading" }) + "), try again in a moment", Toast.LENGTH_SHORT).show()
                 loadRewarded()
                 result(id, false)
                 return@runOnUiThread
