@@ -136,3 +136,7 @@
 ## 1.4.0
 - Landing: Google Play button with a Coming Soon modal.
 - Ads layer: bottom banner slot, Daily Box extra ad roll (1/day), boost-only Spin Wheel (Loss Shield, XP Booster, Lucky Extra Spin).
+
+## 1.4.0
+- Landing: Google Play button with a Coming Soon modal.
+- Ads layer: bottom banner slot, Daily Box extra ad roll (1/day), boost-only Spin Wheel (Loss Shield, XP Booster, Lucky Extra Spin).
