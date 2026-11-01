@@ -38,22 +38,26 @@ class Ads(private val act: Activity, private val web: WebView, private val host:
     private var rewarded: RewardedAd? = null
     private var loading = false
     @Volatile private var lastErr = ""          // last rewarded load error, shown in the "not ready" message
+    @Volatile private var stage = "consent"     // which start-up step we are in
 
     val supported: Boolean get() = ready
 
     fun start() {
         info.requestConsentInfoUpdate(act, ConsentRequestParameters.Builder().build(), {
-            UserMessagingPlatform.loadAndShowConsentFormIfRequired(act) { _ -> initAds() }
-        }, { _ -> initAds() })
+            UserMessagingPlatform.loadAndShowConsentFormIfRequired(act) { e -> if (e != null) lastErr = "form ${e.errorCode}: ${e.message}"; initAds() }
+        }, { e -> lastErr = "consent ${e.errorCode}: ${e.message}"; initAds() })
         initAds()   // consent from an earlier session may already allow ads
     }
 
     private fun initAds() {
-        if (!info.canRequestAds() || !started.compareAndSet(false, true)) return
+        if (!info.canRequestAds()) { stage = "consent status ${info.consentStatus}"; return }
+        if (!started.compareAndSet(false, true)) return
+        stage = "init"
         Thread {
             MobileAds.initialize(act) {
                 act.runOnUiThread {
                     ready = true
+                    stage = "ready"
                     loadRewarded()
                     if (wantBanner) showBanner()
                 }
@@ -128,7 +132,7 @@ class Ads(private val act: Activity, private val web: WebView, private val host:
         act.runOnUiThread {
             val ad = rewarded
             if (ad == null) {
-                Toast.makeText(act, "Ad not ready yet (" + (if (!ready) "starting" else lastErr.ifEmpty { "loading" }) + "), try again in a moment", Toast.LENGTH_SHORT).show()
+                Toast.makeText(act, "Ad not ready yet (" + (if (!ready) "starting: " + stage + (if (lastErr.isEmpty()) "" else " / " + lastErr) else lastErr.ifEmpty { "loading" }) + "), try again in a moment", Toast.LENGTH_LONG).show()
                 loadRewarded()
                 result(id, false)
                 return@runOnUiThread
