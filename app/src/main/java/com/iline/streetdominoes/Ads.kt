@@ -1,6 +1,8 @@
 package com.iline.streetdominoes
 
 import android.app.Activity
+import android.content.Context
+import android.telephony.TelephonyManager
 import android.view.Gravity
 import android.view.View
 import android.webkit.WebView
@@ -39,18 +41,29 @@ class Ads(private val act: Activity, private val web: WebView, private val host:
     private var loading = false
     @Volatile private var lastErr = ""          // last rewarded load error, shown in the "not ready" message
     @Volatile private var stage = "consent"     // which start-up step we are in
+    @Volatile private var consentFailed = false
+    private var waiting: String? = null            // rewarded request waiting for the ad to finish loading
 
     val supported: Boolean get() = ready
 
     fun start() {
         info.requestConsentInfoUpdate(act, ConsentRequestParameters.Builder().build(), {
-            UserMessagingPlatform.loadAndShowConsentFormIfRequired(act) { e -> if (e != null) lastErr = "form ${e.errorCode}: ${e.message}"; initAds() }
-        }, { e -> lastErr = "consent ${e.errorCode}: ${e.message}"; initAds() })
+            UserMessagingPlatform.loadAndShowConsentFormIfRequired(act) { e -> if (e != null) { lastErr = "form ${e.errorCode}: ${e.message}"; consentFailed = true }; initAds() }
+        }, { e -> lastErr = "consent ${e.errorCode}: ${e.message}"; consentFailed = true; initAds() })
         initAds()   // consent from an earlier session may already allow ads
     }
 
+    private val gdpr = setOf("AT","BE","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GR","HU","IE","IT","LV","LT","LU","MT","NL","PL","PT","RO","SK","SI","ES","SE","IS","LI","NO","GB","CH")
+
+    // Safety net when Google's consent service is not set up: outside the EU / UK / Switzerland ads may start without it.
+    private fun outsideGdpr(): Boolean {
+        val tm = act.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+        val c = (tm?.networkCountryIso?.takeIf { it.length == 2 } ?: tm?.simCountryIso?.takeIf { it.length == 2 } ?: java.util.Locale.getDefault().country).uppercase()
+        return c.length == 2 && c !in gdpr
+    }
+
     private fun initAds() {
-        if (!info.canRequestAds()) { stage = "consent status ${info.consentStatus}"; return }
+        if (!info.canRequestAds() && !(consentFailed && outsideGdpr())) { stage = "consent status ${info.consentStatus}"; return }
         if (!started.compareAndSet(false, true)) return
         stage = "init"
         Thread {
@@ -118,7 +131,7 @@ class Ads(private val act: Activity, private val web: WebView, private val host:
         if (!ready || loading || rewarded != null) return
         loading = true
         RewardedAd.load(act, BuildConfig.ADMOB_REWARDED, AdRequest.Builder().build(), object : RewardedAdLoadCallback() {
-            override fun onAdLoaded(ad: RewardedAd) { rewarded = ad; loading = false }
+            override fun onAdLoaded(ad: RewardedAd) { rewarded = ad; loading = false; val w = waiting; if (w != null) { waiting = null; showRewarded(w) } }
             override fun onAdFailedToLoad(e: LoadAdError) {
                 lastErr = "load ${e.code}"
                 rewarded = null
@@ -132,9 +145,17 @@ class Ads(private val act: Activity, private val web: WebView, private val host:
         act.runOnUiThread {
             val ad = rewarded
             if (ad == null) {
-                Toast.makeText(act, "Ad not ready yet (" + (if (!ready) "starting: " + stage + (if (lastErr.isEmpty()) "" else " / " + lastErr) else lastErr.ifEmpty { "loading" }) + "), try again in a moment", Toast.LENGTH_LONG).show()
+                // not loaded yet (cold start, consent still running): wait up to 12 s instead of failing at once
+                if (waiting != null) return@runOnUiThread
+                waiting = id
                 loadRewarded()
-                result(id, false)
+                host.postDelayed({
+                    if (waiting == id) {
+                        waiting = null
+                        Toast.makeText(act, "Ad not ready yet (" + (if (!ready) "starting: " + stage + (if (lastErr.isEmpty()) "" else " / " + lastErr) else lastErr.ifEmpty { "loading" }) + "), try again in a moment", Toast.LENGTH_LONG).show()
+                        result(id, false)
+                    }
+                }, 12_000)
                 return@runOnUiThread
             }
             rewarded = null
