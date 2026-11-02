@@ -5,6 +5,7 @@ on:
     paths:
       - 'app/src/main/assets/www/**'
       - 'pages/**'
+      - 'tools/**'
       - 'landing/**'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
@@ -28,6 +29,12 @@ jobs:
           test -f landing/index.html
           cp dist/index.html dist/play.html        # the game lives at /play (play.html)
           cp landing/index.html dist/index.html    # the landing page lives at /
+      - name: Obfuscate scripts (web build, only when repository variable OBFUSCATE = 1)
+        if: ${{ vars.OBFUSCATE == '1' }}
+        continue-on-error: true
+        run: |
+          npm install --no-save javascript-obfuscator@4
+          node tools/obfuscate-html.mjs dist/play.html dist/sd-ads.js dist/sd-sec.js
       - name: Deploy
         uses: cloudflare/wrangler-action@v3
         with:

@@ -141,3 +141,8 @@
 - Landing: Google Play button with a Coming Soon modal.
 - Ads layer: bottom banner slot, Daily Box extra ad roll (1/day), boost-only Spin Wheel (Loss Shield, XP Booster, Lucky Extra Spin).
 - Android: AdMob banner + rewarded ads with UMP consent (Google test ids until real ids are configured).
+
+## 1.5.0
+- Accounts: device token, recovery key (SD-XXXX-XXXX), cloud snapshot, optional email magic link.
+- Report and block (HUD, quick chat, Settings); server filters invites, quick match and chat.
+- Obfuscation tool + optional CI step.

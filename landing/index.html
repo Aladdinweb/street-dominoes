@@ -71,7 +71,7 @@ footer{text-align:center;padding:26px 20px calc(30px + env(safe-area-inset-botto
 <script>
 (function(){
 // invite links (?room=CODE) and old bookmarks go straight to the game
-var q=location.search;if(/[?&]room=/.test(q)){location.replace('play'+q+location.hash);return}
+var q=location.search;if(/[?&](room|link)=/.test(q)){location.replace('play'+q+location.hash);return}
 var T={
 en:{sub:'Real-time online dominoes with live voice chat. Street tables, speed rounds and global ranks.',play:'Play in Browser',apk:'Download APK',nb:'No install, works on any phone.',
 c1h:'Live voice chat',c1p:'Talk to your table in real time with peer-to-peer WebRTC audio.',c2h:'Speed modes',c2p:'Pick a turn timer of 10 to 30 seconds, or keep full manual control.',c3h:'Global leaderboards',c3p:'Daily, weekly and global ranks, with ranked online matches.',c4h:'Arabic and RTL',c4p:'Full right-to-left Arabic, plus English and French.'},

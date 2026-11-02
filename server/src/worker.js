@@ -55,7 +55,7 @@ export function isoWeek(d) {
 const AVATARS = ['😎', '🦁', '🐯', '🦊', '🐼', '🦅', '🐉', '👑', '🎩', '🤠', '🧔', '🥷'];
 const TITLES = [[5, 'Street Rookie'], [20, 'Café Player'], [50, 'Table Master'], [100, 'Domino General'], [Infinity, 'Street Legend']];
 export const titleOf = w => TITLES.find(t => w <= t[0])[1];
-const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'content-type', 'access-control-max-age': '86400' };
+const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'content-type, authorization', 'access-control-max-age': '86400' };
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json', ...CORS } });
 const validId = id => /^usr_[a-z0-9]{4,20}$/.test(id || '');
 const blank = id => ({ playerId: id, name: 'Player', avatar: AVATARS[0], title: titleOf(0), rankPoints: 1000, totalWins: 0, winRate: '0.0%', blockedWins: 0, winStreak: 0, totalMatches: 0 });
@@ -161,7 +161,10 @@ async function inviteApi(req, env) {
     Object.assign(inv, { room, gm: b.gm === '1v1' ? '1v1' : '2v2', type: TYPES.includes(b.type) ? b.type : '', stake: STAKES.includes(+b.stake) ? +b.stake : 0, turn: TURNS.includes(+b.turn) ? +b.turn : 0 });
   }
   if (!env.MATCH) return json({ error: 'not_configured' }, 503);
-  const pr = await env.MATCH.get(env.MATCH.idFromName('pr')).fetch('https://pr.internal/_pr/invite', { method: 'POST', body: JSON.stringify({ inv, to }) });
+  const mineBl = await blocksOf(env, b.from), toOk = [];      // v1.5.0: nobody gets an invite from / sends one to a player they blocked
+  for (const id of to) if (!mineBl.includes(id) && !(await blocksOf(env, id)).includes(b.from)) toOk.push(id);
+  if (!toOk.length) return json({ ok: true, delivered: [], pushed: [], offline: [], limited: [] });
+  const pr = await env.MATCH.get(env.MATCH.idFromName('pr')).fetch('https://pr.internal/_pr/invite', { method: 'POST', body: JSON.stringify({ inv, to: toOk }) });
   if (!pr.ok) return json({ error: 'presence_unavailable' }, 502);
   const res = await pr.json(), pushed = [], noPush = [];
   for (const id of res.offline || []) {
@@ -197,9 +200,47 @@ async function pushTokenApi(req, env) {
   return json({ ok: true, n: tokens.length });
 }
 
+// ---------- v1.5.0: accounts, recovery, report / block ----------
+// Account data lives in the Durable Object storage of the Matchmaker instance 'acct' (KV's free tier allows only 1000 writes a day).
+// A player proves who they are with a device token (random, only its SHA-256 is stored). First claim of a player id wins: until the Phase 4 login exists, an id nobody has claimed yet can be claimed by anyone who knows it.
+const SEC = { ALPHA: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', KEYS: ['dm_set', 'dm_eco', 'dm_sdx', 'dm_prof2', 'dm_me', 'dm_friends'], SNAP_MAX: 8192, BLOCK_MAX: 200, REASONS: ['chat', 'name', 'cheat', 'spam', 'other'] };
+const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+const sha = async s => hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(s))));
+// the players this player has blocked (internal call to the 'acct' instance; [] when unavailable so a hiccup never blocks play)
+async function blocksOf(env, id) {
+  if (!env.MATCH || !validId(id)) return [];
+  try { const r = await env.MATCH.get(env.MATCH.idFromName('acct')).fetch('https://acct.internal/_acct/blocks-of', { method: 'POST', body: JSON.stringify({ pid: id }) }); const j = await r.json(); return Array.isArray(j.list) ? j.list : []; } catch (e) { return []; }
+}
+const blk2 = (a, b) => (a.blk || []).includes(b.pid) || (b.blk || []).includes(a.pid);
+// pick up to n queued players where nobody has blocked anybody else; strict: null unless the group is full
+function pickGroup(l, n, strict = true) { const g = []; for (const e of l) if (g.length < n && !g.some(x => blk2(x, e))) g.push(e); return strict && g.length < n ? null : g; }
+const SEC_ROUTES = { '/api/auth/init': 'init', '/api/auth/recovery-key': 'rk', '/api/auth/recover': 'recover', '/api/auth/save': 'save', '/api/auth/load': 'load', '/api/auth/email': 'email', '/api/auth/email-recover': 'email-recover', '/api/auth/verify': 'verify', '/api/report': 'report', '/api/block': 'block' };
+async function secApi(req, env, url) {
+  const p = url.pathname;
+  if (p === '/api/auth/config' && req.method === 'GET') return json({ mail: !!(env.RESEND_API_KEY && env.MAIL_FROM) });
+  let op = '', payload = {};
+  if (req.method === 'POST') {
+    const raw = await req.text();
+    if (raw.length > 12288) return json({ error: 'too_large' }, 413);
+    try { payload = raw ? JSON.parse(raw) : {}; } catch (e) { return json({ error: 'bad_json' }, 400); }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return json({ error: 'bad_request' }, 400);
+    op = SEC_ROUTES[p] || '';
+    if (payload.playerId !== undefined) payload.pid = payload.playerId;
+  } else if (req.method === 'GET') {
+    if (p === '/api/blocks') { op = 'blocks'; payload = { pid: url.searchParams.get('playerId') }; }
+    else if (p === '/api/admin/reports') { op = 'admin'; payload = { limit: url.searchParams.get('limit') }; }
+  }
+  if (!op) return json({ error: 'not_found' }, 404);
+  if (!env.MATCH) return json({ error: 'not_configured' }, 503);
+  const bearer = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  const r = await env.MATCH.get(env.MATCH.idFromName('acct')).fetch('https://acct.internal/_acct/op', { method: 'POST', body: JSON.stringify({ ...payload, op, token: bearer, admin: bearer, ip: req.headers.get('cf-connecting-ip') || '0' }) });
+  return new Response(await r.text(), { status: r.status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...CORS } });
+}
+
 async function api(req, env, url) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (url.pathname === '/api/turn' && req.method === 'GET') return turnApi(env);
+  if (url.pathname.startsWith('/api/auth/') || ['/api/report', '/api/block', '/api/blocks', '/api/admin/reports'].includes(url.pathname)) return secApi(req, env, url);
   if (url.pathname === '/api/leaderboard' && req.method === 'GET') {
     if (!env.MATCH) return json({ error: 'lb_not_configured' }, 503);
     const scope = url.searchParams.get('scope') || 'global', lim = url.searchParams.get('limit') || '50';
@@ -349,6 +390,7 @@ export class GameRoom {
       p = this.seatFor(pid);
       if (p === undefined) return this.err(ws, 'full');
       this.seats[p] = { pid, name, dn: this.uniqueName(name), av, bot: false, ws, off: 0, rm: false };
+      this.loadBlocks(p);
     }
     ws.addEventListener('message', e => this.onMsg(p, ws, e.data));
     ws.addEventListener('close', () => this.onClose(p, ws));
@@ -385,8 +427,8 @@ export class GameRoom {
       case 'draw': this.draw(p, m.i); break;
       case 'pass': this.pass(p); break;
       case 'rx':
-        if ((EMO.includes(m.k) || PHR.includes(m.k)) && (!s.rx || now - s.rx > 900)) { s.rx = now; this.bcast({ t: 'rx', p, k: m.k }); }
-        else if (m.k === 'txt' && typeof m.x === 'string' && (!s.rx || now - s.rx > 1500)) { const x = cleanChat(m.x); if (x) { s.rx = now; this.bcast({ t: 'rx', p, k: 'txt', x }); } }
+        if ((EMO.includes(m.k) || PHR.includes(m.k)) && (!s.rx || now - s.rx > 900)) { s.rx = now; this.bcastRx(p, { t: 'rx', p, k: m.k }); }
+        else if (m.k === 'txt' && typeof m.x === 'string' && (!s.rx || now - s.rx > 1500)) { const x = cleanChat(m.x); if (x) { s.rx = now; this.bcastRx(p, { t: 'rx', p, k: 'txt', x }); } }
         break;
       case 'rematch':
         if (this.phase === 'over' && this.final) {
@@ -677,6 +719,9 @@ export class GameRoom {
     send(t.ws, { t: 'rtc', from: p, k: m.k, d });
   }
   bcast(o) { this.seats.forEach(s => { if (s && s.ws) send(s.ws, o); }); }
+  loadBlocks(p) { const s = this.seats[p]; if (s && validId(s.pid)) blocksOf(this.env, s.pid).then(l => { s.blk = l; }).catch(() => {}); }
+  // quick chat / emoji: not delivered between two players where one blocked the other
+  bcastRx(p, o) { const f = this.seats[p]; this.seats.forEach(s => { if (!s || !s.ws) return; if (f && f.pid && s !== f && ((s.blk || []).includes(f.pid) || (f.blk || []).includes(s.pid))) return; send(s.ws, o); }); }
 }
 
 export class Matchmaker {
@@ -684,14 +729,16 @@ export class Matchmaker {
   async fetch(req) {
     const lbu = new URL(req.url);
     if (lbu.pathname.startsWith('/_lb/')) return this.lbFetch(req, lbu);
-    if (lbu.pathname.startsWith('/_pr/')) return this.prFetch(req, lbu);       // presence + invite delivery (instance 'pr')
+    if (lbu.pathname.startsWith('/_pr/')) return this.prFetch(req, lbu);
+    if (lbu.pathname.startsWith('/_acct/')) return this.acctFetch(req, lbu);       // accounts / recovery / report & block (instance 'acct')       // presence + invite delivery (instance 'pr')
     if (lbu.pathname.startsWith('/_mm/')) return this.mmFetch(req, lbu);       // rooms asking for random opponents (instance 'mm')
     if (lbu.searchParams.get('presence')) return this.presenceAccept(req);
        // leaderboard store: a separate instance of this class, reached only from inside the Worker
     const q = new URL(req.url).searchParams;
     const pair = new WebSocketPair(), client = pair[0], ws = pair[1];
     ws.accept();
-    const e = { ws, gm: q.get('gm') === '1v1' ? '1v1' : '2v2', stake: STAKES.includes(+q.get('stake')) ? +q.get('stake') : 0, ...normSpeed(q.get('turn'), q.get('auto')), since: Date.now() };
+    const e = { ws, gm: q.get('gm') === '1v1' ? '1v1' : '2v2', stake: STAKES.includes(+q.get('stake')) ? +q.get('stake') : 0, ...normSpeed(q.get('turn'), q.get('auto')), since: Date.now(), pid: validId(q.get('pid')) ? q.get('pid') : '', blk: [], ready: true };
+    if (e.pid && this.env.MATCH) { e.ready = false; blocksOf(this.env, e.pid).then(l => { e.blk = l; }).catch(() => {}).finally(() => { e.ready = true; }); }   // v1.5.0: wait for the block list before pairing
     this.q.push(e);
     const drop = () => { this.q = this.q.filter(x => x !== e); this.idle(); };
     ws.addEventListener('close', drop);
@@ -890,14 +937,126 @@ export class Matchmaker {
     const now = Date.now();
     for (const [, r] of await this.state.storage.list({ prefix: 'inv:' })) if (r.to === id && r.exp > now) send(ws, { t: 'inv', ...r.inv, rid: id, ttl: r.exp - now, rep: r.n });
   }
+  // ---- v1.5.0 accounts / recovery / report & block (instance 'acct') ----
+  rlOk(key, max, ms) { this.rls = this.rls || new Map(); const now = Date.now(), a = (this.rls.get(key) || []).filter(t => now - t < ms); if (a.length >= max) { this.rls.set(key, a); return false; } a.push(now); this.rls.set(key, a); if (this.rls.size > 5000) this.rls.clear(); return true; }
+  async authed(pid, token) { if (!validId(pid) || typeof token !== 'string' || token.length < 20 || token.length > 80) return null; const a = await this.state.storage.get('a:' + pid); return a && a.th.includes(await sha(token)) ? a : null; }
+  async issue(pid, a) { const tok = b64u(crypto.getRandomValues(new Uint8Array(24))); a.th = [...a.th.slice(-2), await sha(tok)]; await this.state.storage.put('a:' + pid, a); return tok; }   // up to 3 devices
+  async magic(pid, purpose, email, R) {
+    const env = this.env;
+    if (!env.RESEND_API_KEY || !env.MAIL_FROM) return R({ error: 'mail_not_configured' }, 503);
+    const t = b64u(crypto.getRandomValues(new Uint8Array(24)));
+    await this.state.storage.put('ml:' + await sha(t), { pid, purpose, email, exp: Date.now() + 9e5 });
+    const link = (env.APP_URL || 'https://street-dominoes.pages.dev') + '/?link=' + t, bind = purpose === 'bind';
+    try {
+      const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { authorization: 'Bearer ' + env.RESEND_API_KEY, 'content-type': 'application/json' },
+        body: JSON.stringify({ from: env.MAIL_FROM, to: [email], subject: bind ? 'Confirm your Street Dominoes email' : 'Restore your Street Dominoes account',
+          html: '<p>' + (bind ? 'Tap to link this email to your Street Dominoes account:' : 'Tap to restore your Street Dominoes account on this device:') + '</p><p><a href="' + link + '">' + link + '</a></p><p>The link works once and expires in 15 minutes. If you did not ask for it, ignore this email.</p>' }) });
+      return R(r.ok ? { ok: true } : { error: 'mail_failed' }, r.ok ? 200 : 502);
+    } catch (e) { return R({ error: 'mail_failed' }, 502); }
+  }
+  async acctFetch(req, u) {
+    const S = this.state.storage, R = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
+    let q; try { q = await req.json(); } catch (e) { return R({ error: 'bad_json' }, 400); }
+    if (u.pathname === '/_acct/blocks-of') { const l = await S.get('bl:' + q.pid); return R({ list: Array.isArray(l) ? l : [] }); }
+    const ip = String(q.ip || '0'), pid = q.pid;
+    switch (q.op) {
+      case 'init': {
+        if (!validId(pid)) return R({ error: 'bad_id' }, 400);
+        if (!this.rlOk('init:' + ip, 20, 36e5)) return R({ error: 'rate' }, 429);
+        if (await S.get('a:' + pid)) return R({ error: 'claimed' }, 409);
+        return R({ ok: true, token: await this.issue(pid, { th: [], c: Date.now() }) });
+      }
+      case 'rk': {
+        const a = await this.authed(pid, q.token); if (!a) return R({ error: 'auth' }, 401);
+        if (!this.rlOk('rk:' + pid, 5, 36e5)) return R({ error: 'rate' }, 429);
+        const r = crypto.getRandomValues(new Uint8Array(8)), c = i => SEC.ALPHA[r[i] % 32], key = 'SD-' + [0, 1, 2, 3].map(c).join('') + '-' + [4, 5, 6, 7].map(c).join('');
+        if (a.rkh) await S.delete('rk:' + a.rkh);
+        a.rkh = await sha(key); await S.put('rk:' + a.rkh, pid); await S.put('a:' + pid, a);
+        return R({ ok: true, key });
+      }
+      case 'recover': {
+        const k = String(q.key || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (!/^SD[A-Z2-9]{8}$/.test(k)) return R({ error: 'bad_key' }, 400);
+        if (!this.rlOk('rec:' + ip, 8, 36e5) || !this.rlOk('rec:all', 300, 36e5)) return R({ error: 'rate' }, 429);
+        const id = await S.get('rk:' + await sha('SD-' + k.slice(2, 6) + '-' + k.slice(6))), a = id && await S.get('a:' + id);
+        if (!a) return R({ error: 'not_found' }, 404);
+        return R({ ok: true, playerId: id, token: await this.issue(id, a), snap: (await S.get('sn:' + id)) || null });
+      }
+      case 'save': {
+        const a = await this.authed(pid, q.token); if (!a) return R({ error: 'auth' }, 401);
+        const d = q.data; if (!d || typeof d !== 'object') return R({ error: 'bad_data' }, 400);
+        const out = {}; let n = 0;
+        for (const k of SEC.KEYS) if (typeof d[k] === 'string') { if (d[k].length > 4096) return R({ error: 'too_large' }, 413); out[k] = d[k]; n += d[k].length; }
+        if (n > SEC.SNAP_MAX) return R({ error: 'too_large' }, 413);
+        if (!this.rlOk('save:' + pid, 1, 6e4)) return R({ error: 'rate' }, 429);
+        await S.put('sn:' + pid, { d: out, at: Date.now() }); return R({ ok: true });
+      }
+      case 'load': { const a = await this.authed(pid, q.token); if (!a) return R({ error: 'auth' }, 401); return R({ ok: true, snap: (await S.get('sn:' + pid)) || null }); }
+      case 'email': {
+        const a = await this.authed(pid, q.token); if (!a) return R({ error: 'auth' }, 401);
+        const em = String(q.email || '').trim().toLowerCase();
+        if (em.length > 120 || !/^[^\s@]{1,64}@[^\s@]{1,100}\.[^\s@]{2,}$/.test(em)) return R({ error: 'bad_email' }, 400);
+        if (!this.rlOk('em:' + pid, 3, 36e5) || !this.rlOk('em:' + ip, 10, 36e5)) return R({ error: 'rate' }, 429);
+        return this.magic(pid, 'bind', em, R);
+      }
+      case 'email-recover': {
+        const em = String(q.email || '').trim().toLowerCase();
+        if (!this.rlOk('emr:' + ip, 5, 36e5)) return R({ error: 'rate' }, 429);
+        const id = em.length <= 120 && await S.get('em:' + await sha(em));
+        if (id) await this.magic(id, 'recover', em, R);
+        return R({ ok: true });      // same answer whether or not the email is known
+      }
+      case 'verify': {
+        const t = String(q.link || ''); if (!/^[\w-]{20,60}$/.test(t)) return R({ error: 'bad_link' }, 400);
+        if (!this.rlOk('ver:' + ip, 20, 36e5)) return R({ error: 'rate' }, 429);
+        const k = 'ml:' + await sha(t), m = await S.get(k);
+        if (!m || m.exp < Date.now()) return R({ error: 'expired' }, 410);
+        await S.delete(k);
+        const a = await S.get('a:' + m.pid); if (!a) return R({ error: 'not_found' }, 404);
+        if (m.purpose === 'bind') {
+          const eh = await sha(m.email), ex = await S.get('em:' + eh);
+          if (ex && ex !== m.pid) return R({ error: 'email_taken' }, 409);
+          if (a.eh && a.eh !== eh) await S.delete('em:' + a.eh);
+          a.em = m.email; a.eh = eh; await S.put('em:' + eh, m.pid); await S.put('a:' + m.pid, a);
+          return R({ ok: true, purpose: 'bind', email: m.email.replace(/^(.).*(@.*)$/, '$1***$2') });
+        }
+        return R({ ok: true, purpose: 'recover', playerId: m.pid, token: await this.issue(m.pid, a), snap: (await S.get('sn:' + m.pid)) || null });
+      }
+      case 'report': {
+        const a = await this.authed(pid, q.token); if (!a) return R({ error: 'auth' }, 401);
+        const t = q.target; if (!validId(t) || t === pid || !SEC.REASONS.includes(q.reason)) return R({ error: 'bad_request' }, 400);
+        if (!this.rlOk('rep:' + pid, 6, 36e5) || !this.rlOk('rep:' + pid + t, 1, 36e5)) return R({ error: 'rate' }, 429);
+        const chat = (Array.isArray(q.chat) ? q.chat : []).slice(-8).map(x => cleanChat(x)).filter(Boolean);
+        await S.put('rp:' + String(Date.now()).padStart(15, '0') + '-' + b64u(crypto.getRandomValues(new Uint8Array(3))), { from: pid, target: t, reason: q.reason, name: clean(q.name, 12), chat, at: Date.now() });
+        const n = ((await S.get('rpc')) || 0) + 1; await S.put('rpc', n);
+        if (n > 2000) { const old = await S.list({ prefix: 'rp:', limit: 100 }); await S.delete([...old.keys()]); await S.put('rpc', n - old.size); }
+        return R({ ok: true });
+      }
+      case 'block': {
+        const a = await this.authed(pid, q.token); if (!a) return R({ error: 'auth' }, 401);
+        if (!validId(q.target) || q.target === pid) return R({ error: 'bad_request' }, 400);
+        if (!this.rlOk('blk:' + pid, 60, 36e5)) return R({ error: 'rate' }, 429);
+        let l = ((await S.get('bl:' + pid)) || []).filter(x => x !== q.target); if (q.on) l.push(q.target); l = l.slice(-SEC.BLOCK_MAX);
+        await S.put('bl:' + pid, l); return R({ ok: true, list: l });
+      }
+      case 'blocks': { const a = await this.authed(pid, q.token); if (!a) return R({ error: 'auth' }, 401); return R({ ok: true, list: (await S.get('bl:' + pid)) || [] }); }
+      case 'admin': {      // GET /api/admin/reports with "Authorization: Bearer <Worker secret ADMIN_TOKEN>"
+        if (!this.env.ADMIN_TOKEN || q.admin !== this.env.ADMIN_TOKEN) return R({ error: 'forbidden' }, 403);
+        const l = await S.list({ prefix: 'rp:', reverse: true, limit: Math.min(200, +q.limit || 50) });
+        return R({ reports: [...l.values()] });
+      }
+      default: return R({ error: 'not_found' }, 404);
+    }
+  }
   idle() { if (!this.q.length && this.iv) { clearInterval(this.iv); this.iv = null; } }
   tick() {
     this.seekTick();
     const sk = e => e.gm + '|' + e.stake + '|' + (e.turn | 0) + '|' + (e.auto || 'manual');
     for (const k of new Set(this.q.map(sk))) {   // players are only matched with others who chose the same game mode, entry fee and speed settings
-      const [gm, st, tu, au] = k.split('|'), need = gm === '1v1' ? 2 : 4, stake = +st, sp = { turn: +tu, auto: au }, l = this.q.filter(e => sk(e) === k);
-      if (l.length >= need) this.match(l.slice(0, need), gm, false, stake, '', sp);
-      else if (l.length && Date.now() - l[0].since >= CFG.QFILL) this.match(l, gm, true, stake, '', sp);   // fill the table with bots
+      const [gm, st, tu, au] = k.split('|'), need = gm === '1v1' ? 2 : 4, stake = +st, sp = { turn: +tu, auto: au }, l = this.q.filter(e => e.ready !== false && sk(e) === k);
+      const grp = pickGroup(l, need);      // never pair two players where one blocked the other
+      if (grp) this.match(grp, gm, false, stake, '', sp);
+      else if (l.length && Date.now() - l[0].since >= CFG.QFILL) this.match(pickGroup(l, need, false), gm, true, stake, '', sp);   // fill the table with bots
       else l.forEach(e => send(e.ws, { t: 'queue', n: l.length, need }));
     }
   }

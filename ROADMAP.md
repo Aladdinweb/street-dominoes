@@ -85,6 +85,15 @@ AdMob needs the native Android SDK, so this means Kotlin work in `MainActivity.k
 - [x] AdMob in Kotlin (test ids until real ones are set; compile check = CI): Gradle dependency + App ID in the manifest, UMP consent (EEA), banner view under the WebView, rewarded ads, `Native.showRewarded` / `bannerShow` / `bannerHide` + `onAdResult` / `onBannerState`. Use Google test ad ids until the Play listing exists.
 - [ ] Play policy: privacy policy, data-safety form (ads), and keep rewarded ads optional.
 
+## Update v1.5.0 - Accounts, recovery, report / block
+
+- [x] Device token + recovery key (`SD-XXXX-XXXX`) + cloud snapshot (coins, XP, boosts, settings); optional email magic link (needs `RESEND_API_KEY` + `MAIL_FROM`).
+- [x] Report and block (Google Play user-generated-content requirement): in the HUD, the quick-chat panel and Settings > Account Security; server enforcement for invites, quick match and room chat; reports stored for moderation (`/api/admin/reports`).
+- [x] Obfuscation tool + optional CI step (`OBFUSCATE=1`), web build first.
+- [ ] Worker secrets to set: `ADMIN_TOKEN` (read reports), optionally `RESEND_API_KEY`, `MAIL_FROM`, `APP_URL`. Add the obfuscation step to `release.yml` after testing on a preview deploy.
+- [ ] Next (Phase 4): require the token on `/api/match-result`, WebSocket joins and invites; server-held coins; Google / Play Games sign-in when a Play Console account exists.
+
+
 ## Phase 3 - Security and anti-cheat
 
 - [ ] **Server-authoritative game logic:** deal tiles and validate every move in the Worker / Durable Object (online already validates turns and legality; extend to all modes that count for ranking and stakes).

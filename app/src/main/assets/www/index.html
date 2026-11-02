@@ -298,7 +298,7 @@ const MINI='<svg viewBox="0 0 12 22" width="9" height="16"><rect x="1" y="1" wid
 const nm=p=>{const n=(names[p]||'').trim(),d=n===''||n==='Player '+(p+1);return seat[p]===2&&d?'Bot '+(p+1):(n||t().pl+' '+(p+1))};
 function applyTheme(){Skins.cur.table=tcol;Skins.cur.tile=scol;Skins.cur.audio=audI;Skins.all()}
 function saveSet(){syncMe();try{localStorage.setItem('dm_set',JSON.stringify({vol,tc:tcol,sc:scol,n:(net.client&&net.bk?net.bk.names:names),tg:target,av:(net.client&&net.bk?net.bk.avs:avs),co:coins,st:stats,au:audI,pf:profileData()}))}catch(e){}}
-function setPanel(){const x=t(),sw=(arr,k,cur,f)=>`<div class="sw" data-k="${k}">${arr.map((c,i)=>`<i data-i="${i}" class="${i===cur?'on':''}" style="background:${f(c)}"></i>`).join('')}</div>`;$('sp').innerHTML=`<h3>⚙ ${x.set}</h3><button class="big alt" id="op">👤 ${x.prof}</button><label>${x.lng}</label><div class="sw chips">${LG.map((l,i)=>`<b data-lg="${l}" class="${l===lang?'on':''}">${LN[i]}</b>`).join('')}</div><label>${x.snd}</label><input type="range" min="0" max="100" value="${Math.round(vol*100)}" id="vr"><div class="sw chips"><b data-mt="1" class="${mute?'':'on'}">${mute?'🔇':'🔊'}</b></div><label>${x.tcl}</label><div class="tg">${TC.map((c,i)=>`<div class="th ${i===tcol?'on':''}" data-ti="${i}"><span style="background:${c[0]}"></span><small>${TXN[lang][i]}</small></div>`).join('')}</div><label>${x.scl}</label>${sw(SCL,'sc',scol,c=>`linear-gradient(145deg,${c[0]},${c[1]})`)}<label>${x.tgt}</label><div class="sw chips">${[100,200,300].map(v=>`<b data-tg="${v}" class="${v===target?'on':''}">${v}</b>`).join('')}</div>${inGame?`<button class="big alt" id="sm">☰ ${x.menu}</button>`:''}${NA?`<label>${x.ver}: ${NV}</label><button class="big alt" id="uc">${x.upCheck}</button>`:''}<button class="big" id="sx">${x.close}</button><div class="ftm">${CR}</div>`}
+function setPanel(){const x=t(),sw=(arr,k,cur,f)=>`<div class="sw" data-k="${k}">${arr.map((c,i)=>`<i data-i="${i}" class="${i===cur?'on':''}" style="background:${f(c)}"></i>`).join('')}</div>`;$('sp').innerHTML=`<h3>⚙ ${x.set}</h3><button class="big alt" id="op">👤 ${x.prof}</button>${window.SDSec?SDSec.btn():''}<label>${x.lng}</label><div class="sw chips">${LG.map((l,i)=>`<b data-lg="${l}" class="${l===lang?'on':''}">${LN[i]}</b>`).join('')}</div><label>${x.snd}</label><input type="range" min="0" max="100" value="${Math.round(vol*100)}" id="vr"><div class="sw chips"><b data-mt="1" class="${mute?'':'on'}">${mute?'🔇':'🔊'}</b></div><label>${x.tcl}</label><div class="tg">${TC.map((c,i)=>`<div class="th ${i===tcol?'on':''}" data-ti="${i}"><span style="background:${c[0]}"></span><small>${TXN[lang][i]}</small></div>`).join('')}</div><label>${x.scl}</label>${sw(SCL,'sc',scol,c=>`linear-gradient(145deg,${c[0]},${c[1]})`)}<label>${x.tgt}</label><div class="sw chips">${[100,200,300].map(v=>`<b data-tg="${v}" class="${v===target?'on':''}">${v}</b>`).join('')}</div>${inGame?`<button class="big alt" id="sm">☰ ${x.menu}</button>`:''}${NA?`<label>${x.ver}: ${NV}</label><button class="big alt" id="uc">${x.upCheck}</button>`:''}<button class="big" id="sx">${x.close}</button><div class="ftm">${CR}</div>`}
 const NA=typeof Native!=='undefined',NV=NA?Native.version():'';
 let nmode=0;
 const net={host:false,client:false,ok:false,port:8765,ip:'',conn:{},rid:0,seen:-1,msg:'',last:'',myname:'',
@@ -738,7 +738,7 @@ el.className='rx tx';el.textContent=x;el.style.left=Math.min(Math.max(r.left+r.w
 el.style.animationDuration=Math.min(7,2.4+x.length*.06)+'s';$('fx').appendChild(el);setTimeout(()=>el.remove(),Math.min(7000,2500+x.length*60))}
 function sendTxt(raw){const x=cleanChat(raw);if(!x)return false;const n=Date.now();if(n-rxLast<1500)return false;rxLast=n;
 if(net.client)net.send({t:'rx',k:'txt',x});else{const p=humans()>1&&seat[cur]===1?cur:seat.indexOf(1);showTextBubble(p,x);if(net.host)net.bc({t:'rx',p,k:'txt',x})}return true}
-function rxMenu(){const x=t();upShow(`<h3>💬 ${x.rxT}</h3><div class="rxg">${EMO.map(k=>`<b data-k="${k}">${k}</b>`).join('')}</div><div class="rxp">${PHR.map(k=>`<b data-k="${k}">${k}</b>`).join('')}</div><div class="rxt"><input id="rxi" maxlength="60" placeholder="${x.chatPh}" autocomplete="off"><button class="big" id="rxs">${x.chatSend}</button></div><button class="big alt" id="upx">${x.upOk}</button>`)}
+function rxMenu(){const x=t();upShow(`<h3>💬 ${x.rxT}</h3><div class="rxg">${EMO.map(k=>`<b data-k="${k}">${k}</b>`).join('')}</div><div class="rxp">${PHR.map(k=>`<b data-k="${k}">${k}</b>`).join('')}</div><div class="rxt"><input id="rxi" maxlength="60" placeholder="${x.chatPh}" autocomplete="off"><button class="big" id="rxs">${x.chatSend}</button></div>${window.SDSec?SDSec.rpLink():''}<button class="big alt" id="upx">${x.upOk}</button>`)}
 
 /* ===== language button ===== */
 const LGN={en:'English',fr:'Français',ar:'العربية'};
@@ -955,7 +955,7 @@ for(const v of Voice.vcs){if(v.p===net.own)continue;if(!Voice.peers.get(v.p)&&ne
 function micBtn(p){if(!net.online||seat[p]===2)return'';const mine=p===net.own,v=Voice.vcs.find(z=>z.p===p);let ic='🎤',cl='off';
 if(mine){if(Voice.on){ic=Voice.muted?'🔇':'🎤';cl=Voice.muted?'mu':'on'}}
 else if(v){const q=Voice.rmute.has(p)||v.m;ic=q?'🔇':'🔊';cl=q?'mu':'on'}
-return`<button class="mic ${cl}" data-mic="${p}" aria-label="mic">${ic}</button>`}
+return`<button class="mic ${cl}" data-mic="${p}" aria-label="mic">${ic}</button>${window.SDSec?SDSec.rp(p):''}`}
 function micClick(e){const b=e.target.closest&&e.target.closest('[data-mic]');if(!b)return;const p=+b.dataset.mic;
 if(!voiceOK()){upShow(`<h3>🎙 ${t().vcT}</h3><p>${t().vcOnly}</p><button class="big" id="upx">${t().upOk}</button>`);return}
 if(p===net.own){if(!Voice.on)voiceJoin();else voiceMute(!Voice.muted)}
@@ -1123,4 +1123,5 @@ $('upp').addEventListener('click',function h(e){if(e.target.id!=='gj')return;con
 const spl=$('splash');spl.onclick=()=>spl.classList.add('out');
 setTimeout(()=>{spl.classList.add('out');setTimeout(()=>spl.remove(),700);if(NA)Native.checkUpdate('auto')},2800);
 </script>
-<script src="sd-ads.js"></script></body></html>
+<script src="sd-ads.js"></script>
+<script src="sd-sec.js"></script></body></html>
