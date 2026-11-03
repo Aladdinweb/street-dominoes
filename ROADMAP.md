@@ -1,136 +1,95 @@
-# Street Dominoes - Roadmap
+# Street Dominoes - Project Roadmap
 
-by ILINE TECH / FERAK ALADDIN. Read `STATE.md` for how the code works today; this file is where the project is going.
-Keep both files in sync whenever a feature ships (tick the box here, describe the code in `STATE.md`).
+Developed by ILINE TECH / FERAK ALADDIN.
 
-## Current status - v1.2.9 (completed, verified on a phone)
+Read `STATE.md` for how the code works today; this file is where the project is going. Keep both files in sync whenever a feature ships (tick the box here, describe the code in `STATE.md`).
 
-**UI / UX**
-- [x] Centred glowing title; glass panels, dark charcoal + red accents, white type, scale micro-interactions
-- [x] Main-menu profile card (avatar, name, flag) with a separate wallet row (coins, rank points, level); version number only in Settings
-- [x] Emoji avatar grid removed: 12 Street Avatars + custom photo upload (250x250 crop, stored in localStorage; native picker on Android)
-- [x] Country flag picker; active-turn pulse glow on the player HUD; localized "Pass" voice (device TTS)
+---
 
-**Engagement**
-- [x] 24 h Daily Mystery Box with opening animation: coins, XP or one of 4 exclusive gold-ringed avatars
-- [x] XP and levels (200 XP per level; +40 per match win, +15 per match loss)
-- [x] Friends leaderboard by Player ID (uses the existing `/api/profile`)
-- [x] Invite links: `https://street-dominoes.pages.dev/?room=CODE` auto-joins an online room
+## 🚀 Upcoming Phases & Next Features
 
-**Game**
-- [x] Strict double / successor layout (stone after a double never turns; zoom first, start-point search, floor 0.45)
-- [x] Online rooms, LAN host/join, WebRTC voice chat, Cloudflare Pages web build + APK releases from tags
-- [x] Solo entry fee against bots (free / 100 / 500 / 1,000 / 5,000 coins; winner takes the pot)
+### Phase 4 — Smart Referral Loop & Balanced Economy (v1.5.1 / v1.6.0)
+- [ ] **Initial Bonus & Deferred Referral Reward:**
+  - Standard app installation grants a basic initial coins balance.
+  - Installing via a referral link (`?ref=PLAYER_ID`) unlocks the full Welcome Bonus, displayed with an engaging animated popup immediately after the new player completes their first full domino round.
+- [ ] **Tiered Referrer Rewards (Daily Triple Incentive):**
+  - **1st Referral of the day:** High base coins reward.
+  - **2nd & 3rd Referrals:** Scaled/tiered rewards to encourage completing the "Daily Trio".
+  - **Daily Cap:** Enforce a strict daily referral cap server-side to prevent farming and fake account abuse.
+- [ ] **Global Referral Leaderboard (`Classement`):**
+  - Dedicated global ranking tab highlighting the top referrers bringing active players to the game.
 
-## Phase 1 - Server side and cloud sync (shipped in v1.3.0, awaiting on-device / Cloudflare verification)
+> Design notes (added by Claude; delete if not wanted)
+> - A `?ref=` link survives only in the browser. A sideloaded APK install loses it (the Play Install Referrer API needs a Play listing), so also add an "Enter invite code" field in the app.
+> - Count a referral only when the new player has finished a round the **server** saw (an online match). Solo rounds are reported by the phone and can be faked.
+> - Grant rewards through a server-side inbox that the app claims once, so the daily cap and double-claim checks live on the server. Coins themselves are still held on the phone until server-held balances exist.
+> - The landing page currently forwards only `?room=` and `?link=`; it must forward `?ref=` too.
 
-Implemented as additive patches to `server/src/worker.js`; rooms, matchmaking, voice relay and the profile API behave as before. Regression suite: `node server/test/worker.test.mjs`.
+### Phase 5 — Code Protection & Production Ads (Store Polish)
+- [ ] **Switch to Real Ads Mode:**
+  - Execute `bash apply-admob-mode.sh real` prior to public release.
+- [ ] **Production Code Obfuscation:**
+  - Enable `OBFUSCATE=1` in GitHub repository variables to run `tools/obfuscate-html.mjs` on GitHub Actions builds before packaging the release APK/AAB.
+- [ ] **Optional Mail & Magic Link Setup:**
+  - Configure Worker secrets (`RESEND_API_KEY` & `MAIL_FROM`) to enable email-based account magic links alongside the primary `Recovery Key`.
 
-- [x] `GET /api/leaderboard?scope=daily|weekly|global&limit=50` -> `{scope,entries:[{playerId,name,avatar,rankPoints,wins,matches}],updated}`; the client Leaderboard window uses it (Global is the default tab).
-- [x] Rank points are now changed only by results the server saw itself (online rooms): win +25 (+5 per blocked-round win, max +10), loss -15, floor 0, start 1000. Client-posted online results are ignored by `/api/match-result` (no double counting); solo / LAN results still count for profile stats but never change rank.
-- [x] "Rated" rules: at least 2 human players; a 1v1 forfeit only counts after 2 rounds; a player who forfeits always takes the loss; max 40 rated matches per player per day.
-- [x] Daily / weekly boards rank by points earned in the UTC day / ISO week (then wins); Global ranks by total rank points then wins. Stored in plain Durable Object storage (separate `lb` instance of the Matchmaker class, no `wrangler.toml` change).
-- [x] Online match stakes: the entry fee (0 / 100 / 500 / 1,000 / 5,000) is part of the room (Create Room or Quick Match); quick match only pairs equal fees; joiners who cannot pay leave before the match starts; the result screen shows the rank change.
-- [ ] Verify after deploy: `/api/leaderboard?scope=global`, a real two-phone rated match, a staked match, forfeit behaviour.
-- [ ] Coin balances still live on each device, so stakes are consistent between players but not tamper-proof; server-held balances need accounts (Phase 4).
-- [ ] Known gaps: the leaderboard store loads every player into memory (fine for thousands, move to SQL / D1 beyond that); collusion between two accounts can still farm rank (Phase 3).
+### Phase 6 — Google Play Store Launch
+- [ ] **AdMob Store Linking:**
+  - Link the published Google Play store URL inside the AdMob dashboard to trigger store review and active ad serving.
+- [ ] **Privacy & Data Safety Compliance:**
+  - Finalize the privacy policy and Google Play Data Safety form.
 
-## Update v1.3.1 - Social, presence and speed mode (server + app shipped; Android push wiring pending)
+---
 
-- [x] **Speed mode:** host picks a turn timer (10 / 15 / 20 / 30 s, or standard) and the timeout rule: *Auto Play* (server plays a tile) or *Auto Pass* (you lose the turn when you could have played; draw / pass as usual otherwise; 3 timeouts in a row switch that seat to auto play). Countdown shown on the active player's HUD. Online rooms only.
-- [x] **Recent friends:** opponents of online and LAN matches are saved (`dm_recent`) and can be added as friends.
-- [x] **Presence:** online / in-game / offline dots (🟢 🟡 🔘) over a WebSocket to a hibernating Durable Object (instance `pr`); friends and recent players are watched live. Foreground only: a backgrounded app counts as offline, so friends get a push instead.
-- [x] **Match invites:** 1v1 head-to-head; Teammate partner (you + friend vs 2 randoms: the room asks the matchmaker for 2 players who chose the same entry fee, bots fill after 12 s); Team vs Team (you + friend A vs friends B + C). Invited friends get a reserved seat; nobody else can take it.
-- [x] **`POST /api/invite`** (invites and Street Pings: online friends in-app, offline friends by FCM push) and **`POST /api/push-token`** (max 3 devices per player). Rate limits: 20 per sender per 10 min, 20 s per invite pair, 60 s per ping pair.
-- [x] **Android push (native FCM, not Capacitor), wired in v1.3.2:** the app is a native Kotlin WebView app, so push uses the Firebase Messaging SDK through the existing `Native` bridge. Needs: Gradle plugin + dependency, `google-services.json` supplied by CI (not committed to this public repo), manifest (`POST_NOTIFICATIONS`, service, channel `invites`), `MainActivity` token / tap bridge (`pushSupported`, `getPushToken`, `requestPushPermission`, `onPushOpen`). The web build never registers for push (no service worker, no Web Push).
-- [ ] Worker secrets to set: `FCM_SERVICE_ACCOUNT` (Firebase service-account JSON, not `google-services.json`), `TURN_KEY_ID`, `TURN_API_TOKEN`.
-- [x] **Voice relay:** `GET /api/turn` hands out Cloudflare Realtime TURN credentials (cached 6 h) and `sd-voice.js` adds them to every peer connection; the mic button shows a green / amber / red ring for the real connection state. Needs a real test on two phones on different networks.
-- [x] **Identity fix:** the profile name / avatar live in `dm_me` and are never taken from the server's seat list (that overwrite made different players share one name and sent the wrong name to the server). Default name is `Guest_XXXX`. Duplicate names get a number inside a room and a `#id` tag in leaderboards.
-- [x] **Free-text quick chat** (max 60 chars, links stripped, 1 message per 1.5 s). Needs report / block tools before a public Play Store release (user-generated content policy): see Phase 5.
-- [x] **Language button** (top left, 🌐): English / Français / العربية.
-- Limits: presence and invites trust the player id (spoofable until Phase 4 accounts); the presence socket holds all players in one Durable Object (fine for thousands).
+## ✅ Completed Features (as of v1.5.0)
 
-## Update v1.3.2 - Optional game modes, manual control, RTL header fix, native Android push
+### UI / UX & Audio
+- [x] Dark charcoal aesthetic, red glows, white typography, and polished CSS transitions.
+- [x] Profile card, wallet counters, custom avatars grid, and native file cropper integration.
+- [x] Country flag selector with custom excluded regions (e.g., `IL`).
+- [x] Turn indicator pulse, voice chat (WebRTC), and TTS pass speech announcements.
 
-- [x] **Nothing is forced:** the online panel starts on *Casual Play* (free) with *no time limit* and *Manual* control. *Coin Match* (entry fee) and the *Speed settings* section (timer: no limit / 10 / 15 / 20 / 30 s) only apply when the player opens them. Quick Match, Create Room and invites carry the chosen settings; Quick Match only pairs players with the same game type, fee and speed settings. LAN already had Casual / Coins (default Casual); Quick Match and timers are online-only.
-- [x] **Manual (full control)** next to *Auto Play* and *Auto Pass*: nothing is ever played or skipped for you. Safety net kept for everybody's sake: 2 minutes of total inactivity on your turn (`CFG.IDLE`) hands the seat to the server bot so tables never freeze. Auto Play / Auto Pass need a timer; without one they fall back to Manual.
-- [x] **Arabic / RTL:** the globe button and its menu use logical positions (start side), so it no longer collides with the settings button when the layout mirrors; the dominoes board stays left-to-right in every language (left / right seats and chain ends are physical).
-- [x] **Android push:** Firebase Messaging SDK through the existing `Native` bridge (`pushSupported`, `getPushToken`, `pushPermission`, `requestPushPermission`), `StreetMessagingService`, notification channel `invites`, `POST_NOTIFICATIONS` (Android 13+), tap opens the invited room (`launchMode=singleTop`), foreground messages shown as the in-app banner. The Gradle plugin is only applied when `app/google-services.json` exists, so builds without it still work (push off).
-- [x] **Fix:** FCM data keys: `from` is reserved by Firebase, the sender is now sent as `sid` (v1.3.1 pushes would have been rejected).
-- [ ] GitHub secret `GOOGLE_SERVICES_B64` (base64 of `google-services.json`; the CI writes it before building, it is never committed) and Worker secret `FCM_SERVICE_ACCOUNT`; then test an invite to a phone whose app is closed.
-- [ ] Not compiled in the chat sandbox: the GitHub Actions APK build is the compile check for the Kotlin changes.
+### Engagement & Game Modes
+- [x] 24h Daily Mystery Box, Boost Wheel (XP Boosters x2, Loss Shields), and Speed Mode.
+- [x] Bot Play with tiered entry fees (Free / 100 / 500 / 1k / 5k coins) with winner-takes-all logic.
+- [x] Online Friends, LAN Multiplayer, Direct Room Link Invites (`?room=CODE`), and Native FCM Push Notifications.
 
-## Update v1.3.3 - Friends window fix, persistent invites, data-only push
+### Security, Accounts & Moderation (v1.5.0)
+- [x] **Account Recovery:** Device-bound hash tokens, Cloudflare Durable Objects data sync, and unique `SD-XXXX-XXXX` recovery keys.
+- [x] **Report & Block Tools:** Moderation endpoints (`/api/admin/reports`), in-game report/block sheet, voice mute, and matchmaking/chat filtering for blocked users.
 
-- [x] **Fix:** friends & invites window flicker / freeze: a presence render loop (`openFr` -> `Pres.sync` -> `pres` reply -> `openFr`) is gone; presence updates repaint the status dots in place; bounded panel height + no nested `backdrop-filter`; the keyboard resizes the page.
-- [x] **Persistent invites:** an invite rings again every 20 s for up to 3 minutes (in-app banner or push) until the player joins or declines; declined / expired / accepted results are shown to the sender; a reconnecting player sees invites that are still ringing.
-- [x] **Push:** invites and pings are data-only, high-priority FCM messages rendered by `StreetMessagingService` (works with the app killed), with Join and Decline actions and cancel messages.
-- [ ] Not compiled in the chat sandbox: the GitHub Actions APK build is the compile check for the Kotlin changes. Real-phone test: kill the app, send an invite, let it ring twice, decline from the notification.
-- Limits: a Force Stop from Settings blocks all FCM until the app is opened again; some phone brands (Xiaomi, Huawei, Oppo...) also restrict background apps, so the user may need to allow auto-start / disable battery optimisation; whether the screen turns on for a heads-up notification is up to Android and the brand.
+---
 
-
-## Phase 2 - Monetization (AdMob and economy)
-
-AdMob needs the native Android SDK, so this means Kotlin work in `MainActivity.kt` plus a JS bridge. Check current AdMob / Play policies on ad placement and consent (EEA/UMP) before building.
-
-- [ ] **Bottom banner ad** during online games, laid out outside the domino board and the zoom area (reserve the strip in CSS so the board never resizes).
-- [ ] **Rewarded video - Loss Shield:** optional prompt after a match loss to avoid the coin and rank-point deduction.
-- [ ] **Rewarded video - Multiplier Wheel:** spin wheel (x1.5 up to x100, weighted) after a win or a Daily Box to multiply the coin reward.
-- [ ] Rewards granted only after the ad-completed callback; server-side validation once rewards touch server-held balances.
-
-## Update v1.4.0 - Ads layer (JS side done, AdMob native side pending)
-
-- [x] Landing page Google Play button with a "Coming Soon" modal.
-- [x] Bottom banner slot (space reserved only while an ad shows), Daily Box extra ad roll (once per day), boost-only Spin Wheel (Loss Shield, XP Booster, Lucky Extra Spin).
-- [x] AdMob in Kotlin (test ids until real ones are set; compile check = CI): Gradle dependency + App ID in the manifest, UMP consent (EEA), banner view under the WebView, rewarded ads, `Native.showRewarded` / `bannerShow` / `bannerHide` + `onAdResult` / `onBannerState`. Use Google test ad ids until the Play listing exists.
-- [ ] Play policy: privacy policy, data-safety form (ads), and keep rewarded ads optional.
-
-## Update v1.5.0 - Accounts, recovery, report / block
-
-- [x] Device token + recovery key (`SD-XXXX-XXXX`) + cloud snapshot (coins, XP, boosts, settings); optional email magic link (needs `RESEND_API_KEY` + `MAIL_FROM`).
-- [x] Report and block (Google Play user-generated-content requirement): in the HUD, the quick-chat panel and Settings > Account Security; server enforcement for invites, quick match and room chat; reports stored for moderation (`/api/admin/reports`).
-- [x] Obfuscation tool + optional CI step (`OBFUSCATE=1`), web build first.
-- [ ] Worker secrets to set: `ADMIN_TOKEN` (read reports), optionally `RESEND_API_KEY`, `MAIL_FROM`, `APP_URL`. Add the obfuscation step to `release.yml` after testing on a preview deploy.
-- [ ] Next (Phase 4): require the token on `/api/match-result`, WebSocket joins and invites; server-held coins; Google / Play Games sign-in when a Play Console account exists.
-
-
-## Phase 3 - Security and anti-cheat
-
-- [ ] **Server-authoritative game logic:** deal tiles and validate every move in the Worker / Durable Object (online already validates turns and legality; extend to all modes that count for ranking and stakes).
-- [ ] **Code obfuscation:** obfuscate the JS before APK builds. This slows copying but is not security; real protection is the server-side items above.
-- [ ] **Licensing / integrity:** block pirated or tampered APKs. Google Play Licensing (LVL) is the legacy route; check whether the Play Integrity API (licensing and app-integrity verdicts) is Google's current recommendation before implementing.
-- [ ] Rate limits and validation already exist for profile writes and room messages; extend them to the new endpoints.
-
-## Phase 4 - Authentication and cloud sync
-
-- [ ] **Google Play Games Services:** one-tap sign-in on Android, achievements, leaderboard sync.
-- [ ] **Email authentication:** cross-platform accounts for web / PWA players.
-- [ ] Server-held coins, XP, inventory (exclusive avatars) and Daily Box timer tied to the account; migrate from the device-only `dm_*` data.
-- [ ] Upload avatar photo / flag so opponents can see them (today only emoji avatars cross the wire).
-
-## Phase 5 - IP protection and global release
-
-- [ ] Trademark registration for "Street Dominoes" (confirm the procedure and classes with an IP professional; national office plus international options).
-- [ ] Formal IP documentation: `© ILINE TECH by Ferak Aladdin` in app, store listing, repo licence / notices.
-- [ ] Google Play Store publication (store listing, privacy policy, data-safety form, content rating).
-- [ ] In-app report / block for chat and names (required by Google Play for user-generated content).
+## 📌 Backlog (carried over from the previous roadmap, not scheduled)
+- [ ] Server-authoritative game logic for every mode that counts for ranking or stakes (online rooms already validate moves).
+- [ ] Require the account token on `/api/match-result`, WebSocket joins and invites (today they trust the player id).
+- [ ] Server-held coins, XP and inventory tied to the account (the cloud snapshot is client-reported).
+- [ ] Upload avatar photo / flag so opponents can see them (only emoji avatars cross the wire today).
+- [ ] Google Play Games sign-in and Play Integrity / licensing (both need a Play Console account).
+- [ ] Trademark registration for "Street Dominoes" and formal IP notices (`© ILINE TECH by Ferak Aladdin`).
 - [ ] Launch marketing built around live WebRTC voice chat.
+- [ ] Themes hub (table / tile skins, material audio) and street audio emotes.
+- [ ] Known gap: the leaderboard store loads every player into memory (move to SQL / D1 beyond a few thousand players).
+
+---
 
 ## Product rules (keep when changing code)
 
 - Palette: deep black / charcoal, rich red accents, white type. Gold only for VIP / special states (exclusive avatars, special banners).
-- Coins and XP are virtual; no real money.
+- Coins and XP are virtual; no real money. The Boost Wheel never gives coins.
 - The country picker intentionally excludes `IL` (owner decision); keep that filter.
-- Server profile API only accepts emoji avatars from a whitelist: never send photo or street-avatar data to it.
+- The server profile API only accepts emoji avatars from a whitelist: never send photo or street-avatar data to it.
 - Rank points are server-owned: never let the client write them.
 - The profile name / avatar come from `ME` (`dm_me`), never from the `names` / `avs` arrays (those hold the current table's seats).
-- Secrets (`FCM_SERVICE_ACCOUNT`, `TURN_*`, keystore) live in Cloudflare / GitHub secrets, never in the repo or in chat.
+- Secrets (`FCM_SERVICE_ACCOUNT`, `TURN_*`, `ADMIN_TOKEN`, `RESEND_API_KEY`, keystore, account tokens) live in Cloudflare / GitHub secrets, never in the repo or in chat. AdMob ids are not secrets.
+- Rewards from ads are granted only after the rewarded-ad callback says it was earned.
+- Before any public build: ad units must be the real ones (`bash apply-admob-mode.sh real`), never Google's test units.
 
 ## Working agreements (for any new chat session)
 
-- Changes ship as `apply-vX.Y.Z.sh` patch scripts: exact-match anchors in `index.html` (abort if not exactly one match), inline-script syntax check with automatic restore, idempotent, version bump, changelog line, commit, push, tag.
+- Changes ship as `apply-vX.Y.Z.sh` patch scripts: exact-match anchors (abort if not exactly one match), syntax checks with automatic restore, idempotent, docs updated, commit, push, tag.
 - Scripts must use `$TMPDIR` (Termux has no writable `/tmp`) and run from `~/street-dominoes`.
-- Tag `vX.Y.Z` builds the APK (installed apps then offer the update); a push to `main` redeploys the web build to https://street-dominoes.pages.dev; a push under `server/` redeploys the Worker.
-- `app/src/main/assets/www/` is the source of truth for the web assets; `pages/` holds Pages-only files (`_headers`, manifest, mirrored copies).
+- Tag `vX.Y.Z` builds the APK (installed apps then offer the update); a push to `main` redeploys the web build to https://street-dominoes.pages.dev (landing at `/`, game at `/play`); a push under `server/` redeploys the Worker.
+- `app/src/main/assets/www/` is the source of truth for the game; `landing/index.html` for the landing page; `pages/` holds Pages-only files (`_headers`, manifest, icons).
 - Kotlin changes cannot be compiled in the chat sandbox: the GitHub Actions APK build is the compile check, so send the log if it fails.
-- Test logic with scripts first (the layout engine and the new features each have a harness), and still check on a real phone.
+- Test logic with scripts first (`node server/test/*.test.mjs`), and still check on a real phone.
