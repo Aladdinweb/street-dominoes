@@ -204,6 +204,14 @@ async function pushTokenApi(req, env) {
 // Account data lives in the Durable Object storage of the Matchmaker instance 'acct' (KV's free tier allows only 1000 writes a day).
 // A player proves who they are with a device token (random, only its SHA-256 is stored). First claim of a player id wins: until the Phase 4 login exists, an id nobody has claimed yet can be claimed by anyone who knows it.
 const SEC = { ALPHA: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', KEYS: ['dm_set', 'dm_eco', 'dm_sdx', 'dm_prof2', 'dm_me', 'dm_friends'], SNAP_MAX: 8192, BLOCK_MAX: 200, REASONS: ['chat', 'name', 'cheat', 'spam', 'other'] };
+// ---------- v1.6.0: referral loop + reward inbox ----------
+// Rewards are never added by the phone on its own: the server puts them in an inbox ('ib:<pid>') and the app claims each item exactly once (POST /api/rewards/claim).
+// A referral "qualifies" when the new player finishes a RATED online match (>= 2 humans) AFTER entering the code, and either played a human other than the referrer or has 3 rated matches.
+const REF = { BASIC: 5000, FULL: 10000, FULL_SPINS: 1, AGE_MAX: 72 * 36e5, CLAIMS_PER_IP: 5, DAY_MS: 864e5, TZ: 36e5,   // TZ: the "day" changes at midnight Algeria time (UTC+1)
+  TIERS: [{ coins: 10000, shield: 1 }, { coins: 15000, xpMin: 60 }, { coins: 25000, spins: 2 }] };      // 1st / 2nd / 3rd qualified referral of the day; the 4th and later only count for the leaderboard
+const refCode = pid => String(pid).slice(4).toUpperCase();
+const normRef = c => { const id = 'usr_' + String(c || '').trim().toLowerCase().replace(/^usr[_-]?/, ''); return validId(id) ? id : ''; };
+const refDay = () => Math.floor((Date.now() + REF.TZ) / REF.DAY_MS);
 const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
 const sha = async s => hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(s))));
 // the players this player has blocked (internal call to the 'acct' instance; [] when unavailable so a hiccup never blocks play)
@@ -214,7 +222,7 @@ async function blocksOf(env, id) {
 const blk2 = (a, b) => (a.blk || []).includes(b.pid) || (b.blk || []).includes(a.pid);
 // pick up to n queued players where nobody has blocked anybody else; strict: null unless the group is full
 function pickGroup(l, n, strict = true) { const g = []; for (const e of l) if (g.length < n && !g.some(x => blk2(x, e))) g.push(e); return strict && g.length < n ? null : g; }
-const SEC_ROUTES = { '/api/auth/init': 'init', '/api/auth/recovery-key': 'rk', '/api/auth/recover': 'recover', '/api/auth/save': 'save', '/api/auth/load': 'load', '/api/auth/email': 'email', '/api/auth/email-recover': 'email-recover', '/api/auth/verify': 'verify', '/api/report': 'report', '/api/block': 'block' };
+const SEC_ROUTES = { '/api/auth/init': 'init', '/api/auth/recovery-key': 'rk', '/api/auth/recover': 'recover', '/api/auth/save': 'save', '/api/auth/load': 'load', '/api/auth/email': 'email', '/api/auth/email-recover': 'email-recover', '/api/auth/verify': 'verify', '/api/report': 'report', '/api/block': 'block', '/api/ref/claim': 'ref-claim', '/api/rewards/claim': 'rw-claim' };
 async function secApi(req, env, url) {
   const p = url.pathname;
   if (p === '/api/auth/config' && req.method === 'GET') return json({ mail: !!(env.RESEND_API_KEY && env.MAIL_FROM) });
@@ -229,18 +237,25 @@ async function secApi(req, env, url) {
   } else if (req.method === 'GET') {
     if (p === '/api/blocks') { op = 'blocks'; payload = { pid: url.searchParams.get('playerId') }; }
     else if (p === '/api/admin/reports') { op = 'admin'; payload = { limit: url.searchParams.get('limit') }; }
+    else if (p === '/api/ref/status') { op = 'ref-status'; payload = { pid: url.searchParams.get('playerId') }; }
+    else if (p === '/api/rewards') { op = 'rw-list'; payload = { pid: url.searchParams.get('playerId') }; }
+    else if (p === '/api/referral/leaderboard') { op = 'ref-lb'; payload = { limit: url.searchParams.get('limit') }; }
   }
   if (!op) return json({ error: 'not_found' }, 404);
   if (!env.MATCH) return json({ error: 'not_configured' }, 503);
   const bearer = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
   const r = await env.MATCH.get(env.MATCH.idFromName('acct')).fetch('https://acct.internal/_acct/op', { method: 'POST', body: JSON.stringify({ ...payload, op, token: bearer, admin: bearer, ip: req.headers.get('cf-connecting-ip') || '0' }) });
-  return new Response(await r.text(), { status: r.status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...CORS } });
+  let body = await r.text();
+  if (op === 'ref-lb' && r.ok && env.PLAYER_STATS) {      // names / avatars come from the KV profiles
+    try { const j = JSON.parse(body); j.entries = await Promise.all(j.entries.map(async e => { const pr = await env.PLAYER_STATS.get('profile:' + e.id, 'json'); return { playerId: e.id, count: e.n, name: (pr && pr.name) || 'Player', avatar: (pr && pr.avatar) || '' }; })); body = JSON.stringify(j); } catch (err) {}
+  }
+  return new Response(body, { status: r.status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...CORS } });
 }
 
 async function api(req, env, url) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (url.pathname === '/api/turn' && req.method === 'GET') return turnApi(env);
-  if (url.pathname.startsWith('/api/auth/') || ['/api/report', '/api/block', '/api/blocks', '/api/admin/reports'].includes(url.pathname)) return secApi(req, env, url);
+  if (url.pathname.startsWith('/api/auth/') || ['/api/report', '/api/block', '/api/blocks', '/api/admin/reports', '/api/ref/claim', '/api/ref/status', '/api/rewards', '/api/rewards/claim', '/api/referral/leaderboard'].includes(url.pathname)) return secApi(req, env, url);
   if (url.pathname === '/api/leaderboard' && req.method === 'GET') {
     if (!env.MATCH) return json({ error: 'lb_not_configured' }, 503);
     const scope = url.searchParams.get('scope') || 'global', lim = url.searchParams.get('limit') || '50';
@@ -665,6 +680,9 @@ export class GameRoom {
         if (rr.ok) res = (await rr.json()).res || {};
       } catch (e) {}
     }
+    if (rated && env.MATCH) {      // v1.6.0: referral qualification + inbox rewards (instance 'acct')
+      try { await env.MATCH.get(env.MATCH.idFromName('acct')).fetch('https://acct.internal/_acct/op', { method: 'POST', body: JSON.stringify({ op: 'match-done', humans: rows.filter(r => !r.s.fn).map(r => r.id) }) }); } catch (e) {}
+    }
     const rk = {};
     await Promise.all(rows.map(async (r, i) => {
       const p = profs[i] || blank(r.id), o = res[r.id];
@@ -954,6 +972,29 @@ export class Matchmaker {
       return R(r.ok ? { ok: true } : { error: 'mail_failed' }, r.ok ? 200 : 502);
     } catch (e) { return R({ error: 'mail_failed' }, 502); }
   }
+  // ---- v1.6.0 referral loop / reward inbox ----
+  async give(pid, item) {
+    const S = this.state.storage, ib = (await S.get('ib:' + pid)) || { items: [], done: [] };
+    ib.items.push({ id: Date.now().toString(36) + b64u(crypto.getRandomValues(new Uint8Array(3))), at: Date.now(), ...item });
+    ib.items = ib.items.slice(-50); await S.put('ib:' + pid, ib);
+  }
+  async giveWelcomeFull(pid) {        // the full welcome bonus replaces the basic one; if the basic one was already claimed only the difference is paid
+    const S = this.state.storage, wb = (await S.get('wb:' + pid)) || {};
+    if (wb.full) return;
+    wb.full = 1; await S.put('wb:' + pid, wb);
+    const ib = (await S.get('ib:' + pid)) || { items: [], done: [] };
+    ib.items = ib.items.filter(x => x.k !== 'welcome_basic'); await S.put('ib:' + pid, ib);
+    await this.give(pid, { k: 'welcome_full', coins: REF.FULL - (wb.basicClaimed ? REF.BASIC : 0), spins: REF.FULL_SPINS });
+  }
+  async rewardReferrer(by) {
+    const S = this.state.storage, day = refDay();
+    let rd = await S.get('rd:' + by); if (!rd || rd.d !== day) rd = { d: day, n: 0 };
+    rd.n++; await S.put('rd:' + by, rd);
+    const total = ((await S.get('rt:' + by)) || 0) + 1; await S.put('rt:' + by, total);
+    const lb = ((await S.get('rlb')) || []).filter(x => x.id !== by); lb.push({ id: by, n: total }); lb.sort((a, b) => b.n - a.n); await S.put('rlb', lb.slice(0, 100));
+    const tier = REF.TIERS[rd.n - 1];
+    if (tier) await this.give(by, { k: 'referral', tier: rd.n, ...tier });
+  }
   async acctFetch(req, u) {
     const S = this.state.storage, R = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
     let q; try { q = await req.json(); } catch (e) { return R({ error: 'bad_json' }, 400); }
@@ -964,7 +1005,9 @@ export class Matchmaker {
         if (!validId(pid)) return R({ error: 'bad_id' }, 400);
         if (!this.rlOk('init:' + ip, 20, 36e5)) return R({ error: 'rate' }, 429);
         if (await S.get('a:' + pid)) return R({ error: 'claimed' }, 409);
-        return R({ ok: true, token: await this.issue(pid, { th: [], c: Date.now() }) });
+        const token = await this.issue(pid, { th: [], c: Date.now() });
+        await this.give(pid, { k: 'welcome_basic', coins: REF.BASIC });       // v1.6.0: basic welcome bonus, claimed by the app once
+        return R({ ok: true, token, code: refCode(pid) });
       }
       case 'rk': {
         const a = await this.authed(pid, q.token); if (!a) return R({ error: 'auth' }, 401);
@@ -1044,6 +1087,46 @@ export class Matchmaker {
         if (!this.env.ADMIN_TOKEN || q.admin !== this.env.ADMIN_TOKEN) return R({ error: 'forbidden' }, 403);
         const l = await S.list({ prefix: 'rp:', reverse: true, limit: Math.min(200, +q.limit || 50) });
         return R({ reports: [...l.values()] });
+      }
+      case 'ref-claim': {      // the new player enters an invite code (link ?ref=ID or typed): referrer id or its short code
+        const a = await this.authed(pid, q.token); if (!a) return R({ error: 'auth' }, 401);
+        const by = normRef(q.code);
+        if (!by) return R({ error: 'bad_code' }, 400);
+        if (by === pid) return R({ error: 'self' }, 409);
+        if (!this.rlOk('rfc:' + ip, REF.CLAIMS_PER_IP, REF.DAY_MS) || !this.rlOk('rfc:' + pid, 5, 36e5)) return R({ error: 'rate' }, 429);
+        if (Date.now() - a.c > REF.AGE_MAX) return R({ error: 'too_old' }, 409);
+        if (!(await S.get('a:' + by))) return R({ error: 'unknown' }, 404);
+        if (await S.get('rf:' + pid)) return R({ error: 'already' }, 409);
+        await S.put('rf:' + pid, { by, at: Date.now(), st: 'pending' });
+        return R({ ok: true, state: 'pending', welcome: REF.FULL, spins: REF.FULL_SPINS });
+      }
+      case 'ref-status': {
+        const a = await this.authed(pid, q.token); if (!a) return R({ error: 'auth' }, 401);
+        const rf = await S.get('rf:' + pid), rd = await S.get('rd:' + pid);
+        return R({ ok: true, code: refCode(pid), by: rf ? rf.by : null, state: rf ? rf.st : null, today: rd && rd.d === refDay() ? rd.n : 0, cap: REF.TIERS.length, total: (await S.get('rt:' + pid)) || 0, tiers: REF.TIERS });
+      }
+      case 'rw-list': { const a = await this.authed(pid, q.token); if (!a) return R({ error: 'auth' }, 401); const ib = await S.get('ib:' + pid); return R({ ok: true, items: (ib && ib.items) || [] }); }
+      case 'rw-claim': {       // each item can be claimed once; only storage calls between the read and the write, so two taps cannot both succeed
+        const a = await this.authed(pid, q.token); if (!a) return R({ error: 'auth' }, 401);
+        const ib = (await S.get('ib:' + pid)) || { items: [], done: [] }, want = Array.isArray(q.ids) ? q.ids.map(String) : null;
+        const take = ib.items.filter(x => !want || want.includes(x.id));
+        if (!take.length) return R({ ok: true, items: [] });
+        ib.items = ib.items.filter(x => !take.includes(x)); ib.done = [...ib.done, ...take.map(x => x.id)].slice(-50); await S.put('ib:' + pid, ib);
+        if (take.some(x => x.k === 'welcome_basic')) { const wb = (await S.get('wb:' + pid)) || {}; wb.basicClaimed = 1; await S.put('wb:' + pid, wb); }
+        return R({ ok: true, items: take });
+      }
+      case 'ref-lb': { const l = (await S.get('rlb')) || []; return R({ ok: true, entries: l.slice(0, Math.min(100, +q.limit || 50)) }); }
+      case 'match-done': {     // internal (GameRoom.doRecord): humans of a RATED online match
+        const hs = (Array.isArray(q.humans) ? q.humans : []).filter(validId);
+        for (const id of hs) {
+          const n = ((await S.get('pm:' + id)) || 0) + 1; await S.put('pm:' + id, n);
+          const rf = await S.get('rf:' + id);
+          if (!rf || rf.st !== 'pending') continue;
+          if (!(hs.some(h => h !== id && h !== rf.by) || n >= 3)) continue;   // needs a human other than the referrer, or 3 rated matches
+          rf.st = 'done'; rf.q = Date.now(); await S.put('rf:' + id, rf);
+          await this.giveWelcomeFull(id); await this.rewardReferrer(rf.by);
+        }
+        return R({ ok: true });
       }
       default: return R({ error: 'not_found' }, 404);
     }

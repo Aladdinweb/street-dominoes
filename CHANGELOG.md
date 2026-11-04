@@ -146,3 +146,7 @@
 - Accounts: device token, recovery key (SD-XXXX-XXXX), cloud snapshot, optional email magic link.
 - Report and block (HUD, quick chat, Settings); server filters invites, quick match and chat.
 - Obfuscation tool + optional CI step.
+
+## 1.6.0 (server)
+- Referral loop: invite codes, welcome bonuses, tiered daily referrer rewards, referral leaderboard.
+- Reward inbox: the server issues rewards, the app claims each once.

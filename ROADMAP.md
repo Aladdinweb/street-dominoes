@@ -8,24 +8,46 @@ Read `STATE.md` for how the code works today; this file is where the project is 
 
 ## 🚀 Upcoming Phases & Next Features
 
-### Phase 4 — Smart Referral Loop & Balanced Economy (v1.5.1 / v1.6.0)
-- [ ] **Initial Bonus & Deferred Referral Reward:**
-  - Standard app installation grants a basic initial coins balance.
-  - Installing via a referral link (`?ref=PLAYER_ID`) unlocks the full Welcome Bonus, displayed with an engaging animated popup immediately after the new player completes their first full domino round.
-- [ ] **Tiered Referrer Rewards (Daily Triple Incentive):**
-  - **1st Referral of the day:** High base coins reward.
-  - **2nd & 3rd Referrals:** Scaled/tiered rewards to encourage completing the "Daily Trio".
-  - **Daily Cap:** Enforce a strict daily referral cap server-side to prevent farming and fake account abuse.
-- [ ] **Global Referral Leaderboard (`Classement`):**
-  - Dedicated global ranking tab highlighting the top referrers bringing active players to the game.
+### Phase 4 — Smart Referral Loop & Economy (v1.6.0)
+
+**Reward table (decided)**
+
+| Event | Reward |
+|---|---|
+| New install, no referral (Base Welcome Bonus) | 5,000 coins |
+| New install via referral link or code (Full Welcome Bonus, after the first server-verified online match) | 10,000 coins + 1 free Boost Wheel spin (replaces the base bonus; if the base bonus was already claimed, the difference is paid) |
+| Referrer, 1st qualified referral of the day | 10,000 coins + 1x Loss Shield |
+| Referrer, 2nd qualified referral of the day | 15,000 coins + 1x XP Booster x2 (1 hour) |
+| Referrer, 3rd qualified referral of the day | 25,000 coins + 2x Boost Wheel spins |
+| Referrer, 4th and later | No payout; counts for the referral leaderboard only (daily cap: 3 rewards) |
+
+The "day" changes at midnight Algeria time (UTC+1). A referral is **qualified** when the new player finishes a rated online match (at least 2 humans) after entering the code, and either played a human other than the referrer or has 3 rated matches. New accounts only (72 hours), one referrer per account.
+
+- [x] **Server: referral engine and reward inbox** (`/api/ref/claim`, `/api/ref/status`, `/api/rewards`, `/api/rewards/claim`, `/api/referral/leaderboard`; qualification hooked into the rated-match result; tests in `server/test/referral.test.mjs`).
+- [ ] **App: claim and apply rewards:** call `/api/rewards/claim` and add coins, shields, XP boost minutes and spins to the local wallet / `dm_sdx`; animated Welcome Bonus popup.
+- [ ] **Deferred Referral Reward:** `?ref=PLAYER_ID` link support (landing page forwards `?ref=`; the game calls `/api/ref/claim`), Full Welcome Bonus popup after the first server-verified online match.
+- [ ] **Tiered Referrer Rewards (Daily Triple Incentive):** show "x / 3 today" and the reward ladder; reward popup when a friend qualifies.
+- [ ] **Global Referral Leaderboard (`Classement`):** dedicated tab using `/api/referral/leaderboard`.
+- [ ] **Manual Invite Code Entry:** an "Enter Invite Code" field in the app settings / onboarding sheet to handle sideloaded APKs where URL query parameters are lost.
+- [ ] **First-Win Moment & Guided Onboarding:** a brief 2-move guided tutorial for brand-new players, followed by the animated Welcome Bonus popup after their first match win.
+- [ ] **Daily Login Streak (7-Day Rewards):** Day 1 to 6 grant coins/XP, Day 7 grants a free Boost Wheel Spin to drive daily retention (issue through the same server inbox).
 
 > Design notes (added by Claude; delete if not wanted)
-> - A `?ref=` link survives only in the browser. A sideloaded APK install loses it (the Play Install Referrer API needs a Play listing), so also add an "Enter invite code" field in the app.
-> - Count a referral only when the new player has finished a round the **server** saw (an online match). Solo rounds are reported by the phone and can be faked.
-> - Grant rewards through a server-side inbox that the app claims once, so the daily cap and double-claim checks live on the server. Coins themselves are still held on the phone until server-held balances exist.
-> - The landing page currently forwards only `?room=` and `?link=`; it must forward `?ref=` too.
+> - A `?ref=` link survives only in the browser. A sideloaded APK install loses it (the Play Install Referrer API needs a Play listing), hence the manual code field.
+> - Rewards come from a server inbox that the app claims once; coins themselves are still held on the phone until server-held balances exist (see Backlog).
+> - Farming limits today: 3 paid referrals a day per referrer, rated 2-human matches only, new accounts only, 5 code claims a day per address. Two accounts played by the same person can still cycle rewards; real protection needs verified accounts (Play Integrity or login).
+> - Accounts that existed before v1.6.0 did not get the base welcome bonus.
 
-### Phase 5 — Code Protection & Production Ads (Store Polish)
+### Phase 5 — Engagement & Social Features
+- [ ] **Rematch & Friend Rivalry:** instant "Rematch" button at game end and a persistent H2H (head-to-head) win/loss counter against friends.
+- [ ] **Rate-the-App Prompt:** shown once only, after a match victory (never on a loss).
+- [ ] **Street Audio Emotes:** quick audio taunts/emotes during live matches using the WebRTC channel.
+
+### Phase 6 — Monetization Hub & Customization
+- [ ] **Skins & Themes Shop:** spend coins on custom domino tile backings and street-themed table mats.
+- [ ] **Weekly Leaderboard Prizes:** the top 3 players of the weekly leaderboard earn exclusive golden avatars and VIP badges.
+
+### Phase 7 — Code Protection & Production Ads (Store Polish)
 - [ ] **Switch to Real Ads Mode:**
   - Execute `bash apply-admob-mode.sh real` prior to public release.
 - [ ] **Production Code Obfuscation:**
@@ -33,7 +55,7 @@ Read `STATE.md` for how the code works today; this file is where the project is 
 - [ ] **Optional Mail & Magic Link Setup:**
   - Configure Worker secrets (`RESEND_API_KEY` & `MAIL_FROM`) to enable email-based account magic links alongside the primary `Recovery Key`.
 
-### Phase 6 — Google Play Store Launch
+### Phase 8 — Google Play Store Launch
 - [ ] **AdMob Store Linking:**
   - Link the published Google Play store URL inside the AdMob dashboard to trigger store review and active ad serving.
 - [ ] **Privacy & Data Safety Compliance:**
@@ -68,7 +90,6 @@ Read `STATE.md` for how the code works today; this file is where the project is 
 - [ ] Google Play Games sign-in and Play Integrity / licensing (both need a Play Console account).
 - [ ] Trademark registration for "Street Dominoes" and formal IP notices (`© ILINE TECH by Ferak Aladdin`).
 - [ ] Launch marketing built around live WebRTC voice chat.
-- [ ] Themes hub (table / tile skins, material audio) and street audio emotes.
 - [ ] Known gap: the leaderboard store loads every player into memory (move to SQL / D1 beyond a few thousand players).
 
 ---
@@ -80,6 +101,7 @@ Read `STATE.md` for how the code works today; this file is where the project is 
 - The country picker intentionally excludes `IL` (owner decision); keep that filter.
 - The server profile API only accepts emoji avatars from a whitelist: never send photo or street-avatar data to it.
 - Rank points are server-owned: never let the client write them.
+- Referral and welcome rewards come only from the server inbox (`/api/rewards/claim`); the client never creates them itself.
 - The profile name / avatar come from `ME` (`dm_me`), never from the `names` / `avs` arrays (those hold the current table's seats).
 - Secrets (`FCM_SERVICE_ACCOUNT`, `TURN_*`, `ADMIN_TOKEN`, `RESEND_API_KEY`, keystore, account tokens) live in Cloudflare / GitHub secrets, never in the repo or in chat. AdMob ids are not secrets.
 - Rewards from ads are granted only after the rewarded-ad callback says it was earned.
