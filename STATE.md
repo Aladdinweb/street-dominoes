@@ -155,3 +155,12 @@ Superseded by [ROADMAP.md](ROADMAP.md) (phases 1-5).
 - Qualification: `GameRoom.doRecord` calls `/_acct/op` `match-done` for every RATED online match (>= 2 humans, forfeiters excluded). A pending referee qualifies when the match had a human other than the referrer, or at their 3rd rated match. Then: `welcome_full` replaces an unclaimed `welcome_basic` (or pays 10,000 - 5,000 if the base bonus was already claimed) and the referrer gets tier n of the day (1: 10,000 + shield, 2: 15,000 + XP x2 60 min, 3: 25,000 + 2 spins); the 4th and later only raise the counter. The day changes at midnight UTC+1 (`REF.TZ`).
 - `GET /api/referral/leaderboard?limit=` (public): top referrers (`rlb`, top 100 kept) with name / avatar from the KV profile.
 - Constants: `REF` in `worker.js`. Tests: `node server/test/referral.test.mjs`. Not built yet: the app side (claim + popups, invite-code field, `?ref=` handling, leaderboard tab), accounts that existed before v1.6.0 got no base welcome bonus.
+
+
+<!-- sd161 -->
+## 22. v1.6.1 (app): referral loop client
+- `www/sd-ref.js` (loaded last, after `sd-sec.js`; EN / FR / AR) exposes `SDRef` (`open`, `enter`, `check`, `claimCode`, `wallet`). Wallet adapter: coins live in `dm_set[SDRef.wallet.coinKey]` (default `coins`).
+- Rewards: needs `dm_acc.token`; calls `POST /api/rewards/claim` at load, every 60 s and on resume (never in a match). Items are applied once (ids kept in `dm_rwdone`): coins, `dm_sdx.sh` (cap 3), `xb` (cap 120 min), `tk` (cap 9); then the page reloads so in-memory state cannot overwrite the wallet, and the animated Welcome Bonus / Friend qualified popup shows from `sessionStorage.sd_rwpop`.
+- Invite code: `?ref=` (page or landing) is stored in `dm_ref`, claimed through `POST /api/ref/claim` once the account token exists (`dm_refdone` stops repeats; permanent errors clear it). Manual entry: Invite & Earn window and a one-time sheet after the first Welcome popup (`dm_refask`).
+- Menu button "Invite & Earn" is a clone of the Spin Wheel button (`data-m="ref"`, re-inserted by a MutationObserver). Window tabs: Invite (code, copy / share link, x / 3 today, ladder, referrer, code field) and Classement (`GET /api/referral/leaderboard`).
+- Landing: `<script id="sd-ref-landing">` saves `?ref=` in `dm_ref` (same origin as `/play`) and appends it to `/play` links.

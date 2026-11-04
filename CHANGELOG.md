@@ -150,3 +150,6 @@
 ## 1.6.0 (server)
 - Referral loop: invite codes, welcome bonuses, tiered daily referrer rewards, referral leaderboard.
 - Reward inbox: the server issues rewards, the app claims each once.
+
+## 1.6.1
+- Referral loop (app): claim and apply inbox rewards, animated Welcome Bonus popup, invite code entry, ?ref= handling and landing forwarding, Classement tab.

@@ -24,11 +24,11 @@ Read `STATE.md` for how the code works today; this file is where the project is 
 The "day" changes at midnight Algeria time (UTC+1). A referral is **qualified** when the new player finishes a rated online match (at least 2 humans) after entering the code, and either played a human other than the referrer or has 3 rated matches. New accounts only (72 hours), one referrer per account.
 
 - [x] **Server: referral engine and reward inbox** (`/api/ref/claim`, `/api/ref/status`, `/api/rewards`, `/api/rewards/claim`, `/api/referral/leaderboard`; qualification hooked into the rated-match result; tests in `server/test/referral.test.mjs`).
-- [ ] **App: claim and apply rewards:** call `/api/rewards/claim` and add coins, shields, XP boost minutes and spins to the local wallet / `dm_sdx`; animated Welcome Bonus popup.
-- [ ] **Deferred Referral Reward:** `?ref=PLAYER_ID` link support (landing page forwards `?ref=`; the game calls `/api/ref/claim`), Full Welcome Bonus popup after the first server-verified online match.
-- [ ] **Tiered Referrer Rewards (Daily Triple Incentive):** show "x / 3 today" and the reward ladder; reward popup when a friend qualifies.
-- [ ] **Global Referral Leaderboard (`Classement`):** dedicated tab using `/api/referral/leaderboard`.
-- [ ] **Manual Invite Code Entry:** an "Enter Invite Code" field in the app settings / onboarding sheet to handle sideloaded APKs where URL query parameters are lost.
+- [x] **App: claim and apply rewards:** call `/api/rewards/claim` and add coins, shields, XP boost minutes and spins to the local wallet / `dm_sdx`; animated Welcome Bonus popup.
+- [x] **Deferred Referral Reward:** `?ref=PLAYER_ID` link support (landing page forwards `?ref=`; the game calls `/api/ref/claim`), Full Welcome Bonus popup after the first server-verified online match.
+- [x] **Tiered Referrer Rewards (Daily Triple Incentive):** show "x / 3 today" and the reward ladder; reward popup when a friend qualifies.
+- [x] **Global Referral Leaderboard (`Classement`):** dedicated tab using `/api/referral/leaderboard`.
+- [x] **Manual Invite Code Entry:** an "Enter Invite Code" field in the app settings / onboarding sheet to handle sideloaded APKs where URL query parameters are lost.
 - [ ] **First-Win Moment & Guided Onboarding:** a brief 2-move guided tutorial for brand-new players, followed by the animated Welcome Bonus popup after their first match win.
 - [ ] **Daily Login Streak (7-Day Rewards):** Day 1 to 6 grant coins/XP, Day 7 grants a free Boost Wheel Spin to drive daily retention (issue through the same server inbox).
 
