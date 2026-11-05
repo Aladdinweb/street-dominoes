@@ -14,17 +14,17 @@
 
   var T = {
     en: { title: 'Daily Streak', day: 'Day', claim: 'Claim Day {n}', come: 'Next reward in', streak: '\uD83D\uDD25 Streak: {n} days', reset: 'Streak reset. Start again from Day 1!',
-      first: 'Come back every day for bigger rewards.', ready: 'Claim now!', loading: 'Loading...', e_net: 'No connection, try again', e_auth: 'Account not ready, try again', e_err: 'Could not claim, try again' },
+      first: 'Come back every day for bigger rewards.', ready: 'Claim now!', loading: 'Loading...', e_net: 'No connection, try again', e_auth: 'Account not ready, try again', e_err: 'Could not claim, try again', e_srv: 'Server not updated yet (HTTP {n}). Try again in a minute.', e_tok: 'No account token yet. Reopen the app and try again.' },
     fr: { title: 'Série quotidienne', day: 'Jour', claim: 'Récupérer le jour {n}', come: 'Prochaine récompense dans', streak: '\uD83D\uDD25 Série : {n} jours', reset: 'Série remise à zéro. Reprenez au jour 1 !',
-      first: 'Revenez chaque jour pour de plus grosses récompenses.', ready: 'À récupérer !', loading: 'Chargement...', e_net: 'Pas de connexion, réessayez', e_auth: 'Compte pas prêt, réessayez', e_err: 'Impossible de récupérer, réessayez' },
+      first: 'Revenez chaque jour pour de plus grosses récompenses.', ready: 'À récupérer !', loading: 'Chargement...', e_net: 'Pas de connexion, réessayez', e_auth: 'Compte pas prêt, réessayez', e_err: 'Impossible de récupérer, réessayez', e_srv: 'Serveur pas encore à jour (HTTP {n}). Réessayez dans une minute.', e_tok: 'Pas encore de jeton de compte. Rouvrez l’application et réessayez.' },
     ar: { title: 'سلسلة الدخول اليومي', day: 'اليوم', claim: 'استلم اليوم {n}', come: 'المكافأة التالية بعد', streak: '\uD83D\uDD25 السلسلة: {n} أيام', reset: 'انقطعت السلسلة. ابدأ من اليوم 1!',
-      first: 'عد كل يوم لمكافآت أكبر.', ready: 'استلم الآن!', loading: '...', e_net: 'لا يوجد اتصال، حاول مجددا', e_auth: 'الحساب غير جاهز، حاول مجددا', e_err: 'تعذر الاستلام، حاول مجددا' }
+      first: 'عد كل يوم لمكافآت أكبر.', ready: 'استلم الآن!', loading: '...', e_net: 'لا يوجد اتصال، حاول مجددا', e_auth: 'الحساب غير جاهز، حاول مجددا', e_err: 'تعذر الاستلام، حاول مجددا', e_srv: 'الخادم لم يُحدَّث بعد (HTTP {n}). حاول بعد دقيقة.', e_tok: 'لا يوجد رمز حساب بعد. أعد فتح التطبيق وحاول مجددا.' }
   };
   function lang() { var l = L('dm_lang', 'en'); return T[l] ? l : 'en'; }
   function t(k) { return T[lang()][k] || T.en[k] || k; }
 
   var DEF = [{ coins: 1000 }, { coins: 2000 }, { coins: 3000, shield: 1 }, { coins: 4000 }, { coins: 5000, xpMin: 30 }, { coins: 7500 }, { coins: 10000, spins: 1 }];
-  var st = null, stAt = 0, busyF = false, lastTry = 0, claiming = false, tmr = 0, pop = null;
+  var st = null, stAt = 0, busyF = false, busyP = null, lastErr = '', lastTry = 0, claiming = false, tmr = 0, pop = null;
 
   function api(path, method, body) {
     var h = { 'Content-Type': 'application/json' }, tk = token();
@@ -38,14 +38,26 @@
   /* ---------- status ---------- */
   function fresh() { return st && Date.now() < stAt + (st.left || 0); }     // still the same Algeria day (UTC+1) as when it was fetched
   function fetchStatus(force) {
-    if (!pid() || !token() || busyF) return Promise.resolve(st);
+    if (!pid() || !token()) { lastErr = 'no-token'; return Promise.resolve(st); }
+    if (busyF) return busyP;                                        // a request is already running: wait for it instead of answering "nothing"
     if (!force) { if (fresh()) return Promise.resolve(st); if (Date.now() - lastTry < 15000) return Promise.resolve(st); }
     lastTry = Date.now(); busyF = true;
-    return api('/api/streak?playerId=' + encodeURIComponent(pid())).then(function (r) {
+    busyP = api('/api/streak?playerId=' + encodeURIComponent(pid())).then(function (r) {
       busyF = false;
-      if (r.ok && r.j && r.j.ok) { st = r.j; stAt = Date.now(); paintBtn(); }
+      if (r.ok && r.j && r.j.ok) { st = r.j; stAt = Date.now(); lastErr = ''; paintBtn(); }
+      else lastErr = r.status ? 'http-' + r.status : 'net';
       return st;
     });
+    return busyP;
+  }
+  /* what to tell the player when there is no status: the real reason, not always "no connection" */
+  function errText() {
+    var e = lastErr;
+    if (e === 'no-token') return t('e_tok');
+    if (e === 'http-401' || e === 'http-403') return t('e_auth');
+    if (e === 'http-404' || e === 'http-405' || e === 'http-502' || e === 'http-503') return t('e_srv').replace('{n}', e.slice(5));
+    if (e === 'net') return t('e_net');
+    return e ? t('e_err') + ' (' + e.replace('http-', 'HTTP ') + ')' : t('e_net');
   }
 
   /* ---------- styles ---------- */
@@ -145,7 +157,7 @@
     b.innerHTML = '\uD83D\uDD25 ' + esc(t('title')) + '<span class="sub" id="stkc"></span>';
     b.addEventListener('click', function (ev) {
       ev.stopPropagation(); ev.preventDefault();
-      fetchStatus(true).then(function (s) { if (s) openPop(); else toastMsg(t('e_net')); });
+      fetchStatus(true).then(function (s) { if (s) openPop(); else toastMsg(errText()); });
     }, true);
     fr.parentNode.insertBefore(b, fr);
     paintBtn();
@@ -176,7 +188,8 @@
   }
 
   window.SDStreak = {
-    open: function () { fetchStatus(true).then(function (s) { if (s) openPop(); }); },
+    open: function () { fetchStatus(true).then(function (s) { if (s) openPop(); else toastMsg(errText()); }); },
+    lastError: function () { return lastErr; }, errText: errText,
     title: function () { var d = J('dm_stk', {}).day; return t('title') + (d ? ' \u00B7 ' + t('day') + ' ' + d : ''); }
   };
   function boot() {

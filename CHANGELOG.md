@@ -156,3 +156,6 @@
 
 ## 1.7.0
 - 7-day login streak (server + popup + menu button), first-win guided tips, Welcome Bonus shown after the first win, Settings: Replay tutorial.
+
+## 1.7.1
+- Daily Streak: the real reason is shown when the status cannot load (no account token, server not updated, offline); a tap during a running request waits for it instead of reporting "no connection".
