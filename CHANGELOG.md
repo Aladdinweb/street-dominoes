@@ -153,3 +153,6 @@
 
 ## 1.6.1
 - Referral loop (app): claim and apply inbox rewards, animated Welcome Bonus popup, invite code entry, ?ref= handling and landing forwarding, Classement tab.
+
+## 1.7.0
+- 7-day login streak (server + popup + menu button), first-win guided tips, Welcome Bonus shown after the first win, Settings: Replay tutorial.

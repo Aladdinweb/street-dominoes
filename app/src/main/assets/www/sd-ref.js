@@ -144,7 +144,12 @@
   function checkRewards() {
     if (busy || !pid() || !token() || inGame() || cur) return Promise.resolve();
     busy = true;
-    return api('/api/rewards/claim', 'POST', { playerId: pid() }).then(function (r) {
+    var hold = window.SDOb && SDOb.holdWelcome && SDOb.holdWelcome();   // v1.7.0: the Welcome Bonus waits for the first-win moment
+    var go = hold ? api('/api/rewards?playerId=' + encodeURIComponent(pid())).then(function (l) {
+      var ids = ((l.j && l.j.items) || []).filter(function (i) { return !/^welcome/.test(i.k); }).map(function (i) { return i.id; });
+      return ids.length ? api('/api/rewards/claim', 'POST', { playerId: pid(), ids: ids }) : { ok: false, status: 0, j: {} };
+    }) : api('/api/rewards/claim', 'POST', { playerId: pid() });
+    return go.then(function (r) {
       busy = false;
       if (!r.ok) return;
       var items = r.j.items || r.j.claimed || r.j.rewards || [];
@@ -158,7 +163,7 @@
 
   function showPopup(res) {
     var wel = res.kinds.some(function (k) { return /^welcome/.test(k); });
-    var title = wel ? t('welcome') : t('friend') + (res.tier ? ' (' + t('tier') + ' ' + res.tier + ')' : '');
+    var title = wel ? t('welcome') : (res.kinds.indexOf('streak') > -1 ? (window.SDStreak ? SDStreak.title() : 'Daily Streak') : t('friend')) + (res.tier ? ' (' + t('tier') + ' ' + res.tier + ')' : '');
     var chips = '';
     if (res.tot.shield) chips += '<div class="chip">+' + res.tot.shield + ' ' + t('shield') + '</div>';
     if (res.tot.xp) chips += '<div class="chip">' + t('xp') + ' (' + res.tot.xp + ' min)</div>';

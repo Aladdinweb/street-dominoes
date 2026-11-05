@@ -29,8 +29,8 @@ The "day" changes at midnight Algeria time (UTC+1). A referral is **qualified** 
 - [x] **Tiered Referrer Rewards (Daily Triple Incentive):** show "x / 3 today" and the reward ladder; reward popup when a friend qualifies.
 - [x] **Global Referral Leaderboard (`Classement`):** dedicated tab using `/api/referral/leaderboard`.
 - [x] **Manual Invite Code Entry:** an "Enter Invite Code" field in the app settings / onboarding sheet to handle sideloaded APKs where URL query parameters are lost.
-- [ ] **First-Win Moment & Guided Onboarding:** a brief 2-move guided tutorial for brand-new players, followed by the animated Welcome Bonus popup after their first match win.
-- [ ] **Daily Login Streak (7-Day Rewards):** Day 1 to 6 grant coins/XP, Day 7 grants a free Boost Wheel Spin to drive daily retention (issue through the same server inbox).
+- [x] **First-Win Moment & Guided Onboarding:** a brief 2-move guided tutorial for brand-new players, followed by the animated Welcome Bonus popup after their first match win.
+- [x] **Daily Login Streak (7-Day Rewards):** Day 1 to 6 grant coins/XP, Day 7 grants a free Boost Wheel Spin to drive daily retention (issue through the same server inbox).
 
 > Design notes (added by Claude; delete if not wanted)
 > - A `?ref=` link survives only in the browser. A sideloaded APK install loses it (the Play Install Referrer API needs a Play listing), hence the manual code field.
@@ -60,6 +60,18 @@ The "day" changes at midnight Algeria time (UTC+1). A referral is **qualified** 
   - Link the published Google Play store URL inside the AdMob dashboard to trigger store review and active ad serving.
 - [ ] **Privacy & Data Safety Compliance:**
   - Finalize the privacy policy and Google Play Data Safety form.
+
+
+### Phase 8b - Store & Economy Tuning (anti-inflation controls, decided)
+Goal: keep the coin supply from inflating as the faucets grow (welcome bonus, referral tiers, Daily Box, login streak, ads).
+- [ ] **Mandatory Entry Fees (Stakes):** every match mode (Standard, Rated, High Rollers) requires a coin entry fee, so a player can never generate coins without risk. This replaces today's free Casual / free solo option for coin-earning play; decide the minimum fee and a safety net for players who run out of coins (for example the Daily Box and the login streak keep a floor, or a free practice mode that pays nothing).
+- [ ] **House Commission / Rake:** the server burns a small share (5-10%, final value to be tuned) of the total room pot on every match win, permanently removing coins from circulation.
+- [ ] **Mini-Shop (Cosmetic Sinks):** high-tier coin sinks: custom table themes, premium domino stone skins, unique avatars / frames, quick-chat emojis (builds on the `Skins` engine and the Phase 6 Skins & Themes Shop).
+
+> Design notes (added by Claude; delete if not wanted)
+> - Fees and rake are only trustworthy once coins live on the server (see Backlog: server-held coins, XP and inventory). Until then the phones settle the pot, so a modified client could skip the fee or the rake.
+> - Before tuning the percentages, log coins issued (reward inbox: welcome, referral, streak, box, ads) against coins burned (rake, shop) per day; the rake only works if burn >= issue over time.
+> - Free modes disappear for coin-earning play, so keep at least one no-reward practice mode and the daily faucets, otherwise players with zero coins are locked out.
 
 ---
 

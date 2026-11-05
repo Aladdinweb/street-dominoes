@@ -209,6 +209,17 @@ const SEC = { ALPHA: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', KEYS: ['dm_set', 'dm_ec
 // A referral "qualifies" when the new player finishes a RATED online match (>= 2 humans) AFTER entering the code, and either played a human other than the referrer or has 3 rated matches.
 const REF = { BASIC: 5000, FULL: 10000, FULL_SPINS: 1, AGE_MAX: 72 * 36e5, CLAIMS_PER_IP: 5, DAY_MS: 864e5, TZ: 36e5,   // TZ: the "day" changes at midnight Algeria time (UTC+1)
   TIERS: [{ coins: 10000, shield: 1 }, { coins: 15000, xpMin: 60 }, { coins: 25000, spins: 2 }] };      // 1st / 2nd / 3rd qualified referral of the day; the 4th and later only count for the leaderboard
+// ---------- v1.7.0: 7-day login streak ----------
+// One claim per Algeria day (UTC+1, the same day as the referral tiers). Missing a whole day restarts at Day 1; after Day 7 the cycle starts again.
+// The reward goes into the same inbox as the referral rewards ('ib:<pid>'), so the phone applies it through POST /api/rewards/claim.
+const STREAK = { DAYS: [{ coins: 1000 }, { coins: 2000 }, { coins: 3000, shield: 1 }, { coins: 4000 }, { coins: 5000, xpMin: 30 }, { coins: 7500 }, { coins: 10000, spins: 1 }] };
+const streakState = rec => {
+  const d = refDay(), base = { today: d, left: REF.DAY_MS - ((Date.now() + REF.TZ) % REF.DAY_MS) };
+  if (!rec) return { ...base, can: true, day: 1, run: 0, done: false, broken: false };
+  if (rec.last >= d) return { ...base, can: false, day: rec.n, run: rec.c, done: true, broken: false };
+  if (rec.last === d - 1) return { ...base, can: true, day: rec.n % 7 + 1, run: rec.c, done: false, broken: false };
+  return { ...base, can: true, day: 1, run: 0, done: false, broken: true };
+};
 const refCode = pid => String(pid).slice(4).toUpperCase();
 const normRef = c => { const id = 'usr_' + String(c || '').trim().toLowerCase().replace(/^usr[_-]?/, ''); return validId(id) ? id : ''; };
 const refDay = () => Math.floor((Date.now() + REF.TZ) / REF.DAY_MS);
@@ -222,7 +233,7 @@ async function blocksOf(env, id) {
 const blk2 = (a, b) => (a.blk || []).includes(b.pid) || (b.blk || []).includes(a.pid);
 // pick up to n queued players where nobody has blocked anybody else; strict: null unless the group is full
 function pickGroup(l, n, strict = true) { const g = []; for (const e of l) if (g.length < n && !g.some(x => blk2(x, e))) g.push(e); return strict && g.length < n ? null : g; }
-const SEC_ROUTES = { '/api/auth/init': 'init', '/api/auth/recovery-key': 'rk', '/api/auth/recover': 'recover', '/api/auth/save': 'save', '/api/auth/load': 'load', '/api/auth/email': 'email', '/api/auth/email-recover': 'email-recover', '/api/auth/verify': 'verify', '/api/report': 'report', '/api/block': 'block', '/api/ref/claim': 'ref-claim', '/api/rewards/claim': 'rw-claim' };
+const SEC_ROUTES = { '/api/auth/init': 'init', '/api/auth/recovery-key': 'rk', '/api/auth/recover': 'recover', '/api/auth/save': 'save', '/api/auth/load': 'load', '/api/auth/email': 'email', '/api/auth/email-recover': 'email-recover', '/api/auth/verify': 'verify', '/api/report': 'report', '/api/block': 'block', '/api/ref/claim': 'ref-claim', '/api/rewards/claim': 'rw-claim', '/api/streak/claim': 'streak-claim' };
 async function secApi(req, env, url) {
   const p = url.pathname;
   if (p === '/api/auth/config' && req.method === 'GET') return json({ mail: !!(env.RESEND_API_KEY && env.MAIL_FROM) });
@@ -239,6 +250,7 @@ async function secApi(req, env, url) {
     else if (p === '/api/admin/reports') { op = 'admin'; payload = { limit: url.searchParams.get('limit') }; }
     else if (p === '/api/ref/status') { op = 'ref-status'; payload = { pid: url.searchParams.get('playerId') }; }
     else if (p === '/api/rewards') { op = 'rw-list'; payload = { pid: url.searchParams.get('playerId') }; }
+    else if (p === '/api/streak') { op = 'streak-status'; payload = { pid: url.searchParams.get('playerId') }; }
     else if (p === '/api/referral/leaderboard') { op = 'ref-lb'; payload = { limit: url.searchParams.get('limit') }; }
   }
   if (!op) return json({ error: 'not_found' }, 404);
@@ -255,7 +267,7 @@ async function secApi(req, env, url) {
 async function api(req, env, url) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (url.pathname === '/api/turn' && req.method === 'GET') return turnApi(env);
-  if (url.pathname.startsWith('/api/auth/') || ['/api/report', '/api/block', '/api/blocks', '/api/admin/reports', '/api/ref/claim', '/api/ref/status', '/api/rewards', '/api/rewards/claim', '/api/referral/leaderboard'].includes(url.pathname)) return secApi(req, env, url);
+  if (url.pathname.startsWith('/api/auth/') || ['/api/report', '/api/block', '/api/blocks', '/api/admin/reports', '/api/ref/claim', '/api/ref/status', '/api/rewards', '/api/rewards/claim', '/api/referral/leaderboard', '/api/streak', '/api/streak/claim'].includes(url.pathname)) return secApi(req, env, url);
   if (url.pathname === '/api/leaderboard' && req.method === 'GET') {
     if (!env.MATCH) return json({ error: 'lb_not_configured' }, 503);
     const scope = url.searchParams.get('scope') || 'global', lim = url.searchParams.get('limit') || '50';
@@ -1127,6 +1139,21 @@ export class Matchmaker {
           await this.giveWelcomeFull(id); await this.rewardReferrer(rf.by);
         }
         return R({ ok: true });
+      }
+      case 'streak-status': {
+        const a = await this.authed(pid, q.token); if (!a) return R({ error: 'auth' }, 401);
+        const rec = await S.get('st:' + pid);
+        return R({ ok: true, ...streakState(rec), best: (rec && rec.best) || 0, total: (rec && rec.total) || 0, days: STREAK.DAYS });
+      }
+      case 'streak-claim': {   // v1.7.0: one claim per Algeria day; the read and the write below are storage calls only, so two taps cannot both succeed
+        const a = await this.authed(pid, q.token); if (!a) return R({ error: 'auth' }, 401);
+        if (!this.rlOk('stk:' + pid, 6, 6e4)) return R({ error: 'rate' }, 429);
+        const rec = await S.get('st:' + pid), s = streakState(rec);
+        if (!s.can) return R({ error: 'claimed', ...s }, 409);
+        const run = !rec || s.broken ? 1 : rec.c + 1;
+        await S.put('st:' + pid, { last: s.today, n: s.day, c: run, best: Math.max((rec && rec.best) || 0, run), total: ((rec && rec.total) || 0) + 1 });
+        await this.give(pid, { k: 'streak', day: s.day, ...STREAK.DAYS[s.day - 1] });
+        return R({ ok: true, day: s.day, run, reward: STREAK.DAYS[s.day - 1] });
       }
       default: return R({ error: 'not_found' }, 404);
     }
